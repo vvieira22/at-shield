@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/at_shield_core",
+    "crates/at_shield_ffi",
+    "crates/at_shield_service",
+    "crates/at_shield_windows",
+    "crates/at_shield_android",
+    "crates/at_shield_linux",
+    "crates/at_shield_macos",
+]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["NERD"]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+parking_lot = "0.12"
+tiny_http = "0.12"
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+at_shield_core = { path = "crates/at_shield_core" }
+at_shield_windows = { path = "crates/at_shield_windows" }
+at_shield_android = { path = "crates/at_shield_android" }
+at_shield_linux = { path = "crates/at_shield_linux" }
+at_shield_macos = { path = "crates/at_shield_macos" }

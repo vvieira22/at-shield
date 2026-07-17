@@ -1,0 +1,21 @@
+[package]
+name = "at_shield_windows"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+at_shield_core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+parking_lot = { workspace = true }
+tiny_http = { workspace = true }
+rcgen = { workspace = true }
+rustls = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_NetworkManagement_WindowsFilteringPlatform",
+    "Win32_System_Rpc",
+] }
