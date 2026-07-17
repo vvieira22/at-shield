@@ -1,0 +1,18 @@
+[package]
+name = "at_shield_service"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "at-shield-service"
+path = "src/main.rs"
+
+[dependencies]
+at_shield_core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+at_shield_windows = { workspace = true }
+windows-service = "0.7"
