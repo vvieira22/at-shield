@@ -22,22 +22,29 @@ class AppSidebar extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AtShieldColors.accent,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'NERD',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 11,
-                    letterSpacing: 0.08,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.asset(
+                  'assets/icon.png',
+                  width: 68,
+                  height: 68,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Container(
+                    width: 68,
+                    height: 68,
+                    color: AtShieldColors.accent,
+                    alignment: Alignment.center,
+                    child: const Text(
+                      'AT',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                      ),
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -46,10 +53,11 @@ class AppSidebar extends StatelessWidget {
                       'A.T. SHIELD',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        fontSize: 13,
+                        fontSize: 14,
                         letterSpacing: 0.06,
                       ),
                     ),
+                    SizedBox(height: 2),
                     Text(
                       'FOCO | DISCIPLINA | PROTEÇÃO',
                       style: TextStyle(
@@ -79,6 +87,13 @@ class AppSidebar extends StatelessWidget {
             onTap: onSelect,
           ),
           _NavItem(
+            id: 'historico',
+            label: 'Histórico',
+            icon: Icons.history,
+            selected: section == 'historico',
+            onTap: onSelect,
+          ),
+          _NavItem(
             id: 'paginas',
             label: 'Página de bloqueio',
             icon: Icons.web_asset_outlined,
@@ -102,6 +117,7 @@ class AppSidebar extends StatelessWidget {
           const Spacer(),
           BlocBuilder<ShieldCubit, ShieldState>(
             builder: (context, state) {
+              final status = _protectionStatus(state);
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -111,20 +127,18 @@ class AppSidebar extends StatelessWidget {
                         width: 8,
                         height: 8,
                         decoration: BoxDecoration(
-                          color: state.protectionActive
-                              ? AtShieldColors.success
-                              : AtShieldColors.muted,
+                          color: status.color,
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        state.protectionActive
-                            ? 'Proteção ativa'
-                            : 'Proteção inativa',
-                        style: const TextStyle(
-                          color: AtShieldColors.muted,
-                          fontSize: 12,
+                      Expanded(
+                        child: Text(
+                          status.label,
+                          style: const TextStyle(
+                            color: AtShieldColors.muted,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ],
@@ -145,6 +159,38 @@ class AppSidebar extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ProtStatus {
+  const _ProtStatus(this.label, this.color);
+  final String label;
+  final Color color;
+}
+
+_ProtStatus _protectionStatus(ShieldState state) {
+  final sessionOn = state.session != null;
+  final enabled = state.enabledSitesTotal;
+  final localEnabled = state.sites.where((s) => s.enabled).length;
+
+  if (sessionOn && state.networkArmed) {
+    return const _ProtStatus('Protegendo agora', AtShieldColors.success);
+  }
+  if (sessionOn) {
+    return const _ProtStatus(
+      'Sessão · precisa Admin',
+      Color(0xFFEAB308),
+    );
+  }
+  if (state.networkArmed && state.protectionActive) {
+    return const _ProtStatus('Bloqueio ativo', AtShieldColors.success);
+  }
+  if (enabled > 0 || localEnabled > 0 || state.protectionActive) {
+    return const _ProtStatus(
+      'Configurado · precisa Admin',
+      Color(0xFFEAB308),
+    );
+  }
+  return const _ProtStatus('Nenhum site ligado', AtShieldColors.muted);
 }
 
 class _NavItem extends StatelessWidget {
@@ -173,14 +219,6 @@ class _NavItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           onTap: () => onTap(id),
           child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: selected
-                  ? const Border(
-                      left: BorderSide(color: AtShieldColors.accent, width: 3),
-                    )
-                  : null,
-            ),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [

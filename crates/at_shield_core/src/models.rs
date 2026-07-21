@@ -59,7 +59,6 @@ impl SiteRule {
 pub enum SessionState {
     Idle,
     Running,
-    Paused,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -69,4 +68,28 @@ pub struct FocusSession {
     pub state: SessionState,
     pub remaining_secs: u64,
     pub duration_secs: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DomainHit {
+    pub domain: String,
+    pub count: u32,
+}
+
+/// Finished focus session — persisted for the Histórico tab.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SessionRecord {
+    pub id: String,
+    pub profile_id: String,
+    pub profile_name: String,
+    /// Unix seconds (local wall clock at start).
+    pub started_at: i64,
+    pub ended_at: i64,
+    pub duration_secs: u64,
+    /// Wall-clock span start→end.
+    pub elapsed_secs: u64,
+    /// `manual` | `timer`
+    pub ended_reason: String,
+    pub total_attempts: u32,
+    pub attempts: Vec<DomainHit>,
 }

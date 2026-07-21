@@ -19,6 +19,16 @@ pub trait NetworkFilter: Send + Sync {
         Ok(())
     }
     fn clear_all(&self) -> Result<(), FilterError>;
+    /// True when WFP/hosts actually applied (needs Admin on Windows).
+    fn network_armed(&self) -> bool {
+        false
+    }
+    /// Clear per-domain block-page hit counters (call on session start).
+    fn reset_block_hits(&self) {}
+    /// Take and clear hit counters since last reset (document navigations only).
+    fn drain_block_hits(&self) -> Vec<(String, u32)> {
+        Vec::new()
+    }
 }
 
 #[derive(Debug)]

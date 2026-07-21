@@ -67,3 +67,42 @@ std::string Utf8FromUtf16(const wchar_t* utf16_string) {
   }
   return utf8_string;
 }
+
+bool PrefsBool(const char* key) {
+  wchar_t* local = nullptr;
+  size_t len = 0;
+  if (_wdupenv_s(&local, &len, L"LOCALAPPDATA") != 0 || local == nullptr) {
+    return false;
+  }
+  std::wstring path =
+      std::wstring(local) + L"\\ATShield\\ui_prefs.json";
+  free(local);
+
+  HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+                            nullptr);
+  if (file == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+  LARGE_INTEGER size{};
+  if (!GetFileSizeEx(file, &size) || size.QuadPart <= 0 ||
+      size.QuadPart > 64 * 1024) {
+    CloseHandle(file);
+    return false;
+  }
+  std::string body(static_cast<size_t>(size.QuadPart), '\0');
+  DWORD read = 0;
+  const BOOL ok =
+      ReadFile(file, body.data(), static_cast<DWORD>(body.size()), &read,
+               nullptr);
+  CloseHandle(file);
+  if (!ok) {
+    return false;
+  }
+  body.resize(read);
+  // ponytail: tiny prefs file — string scan is enough
+  const std::string spaced = std::string("\"") + key + "\": true";
+  const std::string tight = std::string("\"") + key + "\":true";
+  return body.find(spaced) != std::string::npos ||
+         body.find(tight) != std::string::npos;
+}

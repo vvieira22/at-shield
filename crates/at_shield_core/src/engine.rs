@@ -5,7 +5,19 @@ use crate::{Command, Response, VERSION};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
+
+/// If the UI stops pinging for this long during a session, tear protection down.
+const UI_HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(12);
+
+fn now_unix() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
 
 /// `https://x.com/foo` → `x.com`
 pub fn normalize_domain(raw: &str) -> String {
@@ -58,9 +70,10 @@ struct LiveSession {
     profile_name: String,
     state: SessionState,
     duration_secs: u64,
-    /// Remaining when last (re)started or paused.
+    /// Remaining when last ticked.
     remaining_secs: u64,
     tick_at: Instant,
+    started_at: i64,
 }
 
 pub struct Engine {
@@ -69,6 +82,10 @@ pub struct Engine {
     /// Hot path: id -> rule currently applied on the wire.
     active: Mutex<HashMap<String, SiteRule>>,
     session: Mutex<Option<LiveSession>>,
+    /// Set when a session ends (manual or timer); Flutter pops it for the summary dialog.
+    pending_summary: Mutex<Option<SessionRecord>>,
+    /// Last time the desktop UI checked in (heartbeat / health / get_session).
+    ui_heartbeat: Mutex<Option<Instant>>,
 }
 
 impl Engine {
@@ -79,14 +96,89 @@ impl Engine {
             filter,
             active: Mutex::new(HashMap::new()),
             session: Mutex::new(None),
+            pending_summary: Mutex::new(None),
+            ui_heartbeat: Mutex::new(None),
         })
     }
 
-    /// Apply enabled rules to the network adapter (can be slow: DNS + WFP).
+    /// Background: if UI vanishes mid-session, clear hosts/WFP (no orphan blocks).
+    pub fn spawn_ui_watchdog(self: &Arc<Self>) {
+        let eng = Arc::clone(self);
+        let _ = thread::Builder::new()
+            .name("at-shield-ui-watchdog".into())
+            .spawn(move || loop {
+                thread::sleep(Duration::from_secs(1));
+                eng.reap_if_ui_gone();
+            });
+    }
+
+    fn touch_ui(&self) {
+        *self.ui_heartbeat.lock() = Some(Instant::now());
+    }
+
+    fn reap_if_ui_gone(&self) {
+        if self.session.lock().is_none() {
+            return;
+        }
+        let Some(last) = *self.ui_heartbeat.lock() else {
+            return;
+        };
+        if last.elapsed() <= UI_HEARTBEAT_TIMEOUT {
+            return;
+        }
+        eprintln!(
+            "[at-shield] UI sumiu (>{}s) — encerrando sessão e soltando rede",
+            UI_HEARTBEAT_TIMEOUT.as_secs()
+        );
+        let _ = self.finish_session("ui_gone");
+        let _ = self.pending_summary.lock().take();
+    }
+
+    /// Migrate + wipe leftover hosts. Blocks only start with a session.
     /// Call after IPC is listening so the UI can connect immediately.
     pub fn warm_protection(&self) -> Result<(), String> {
         self.migrate_bad_domains()?;
-        self.reapply_enabled()
+        let _ = self.store.purge_session_history_older_than(30 * 24 * 60 * 60);
+        self.clear_network()
+    }
+}
+
+impl Drop for Engine {
+    fn drop(&mut self) {
+        // Closing the service must never leave hosts/WFP armed.
+        let _ = self.session.lock().take();
+        let _ = self.clear_network();
+    }
+}
+
+impl Engine {
+    fn clear_network(&self) -> Result<(), String> {
+        self.filter.clear_all().map_err(|e| e.to_string())?;
+        self.active.lock().clear();
+        Ok(())
+    }
+
+    fn reject_if_session(&self) -> Result<(), String> {
+        if self.session.lock().is_some() {
+            return Err("encerre a sessão pra editar sites".into());
+        }
+        Ok(())
+    }
+
+    /// Apply enabled sites for one profile (session start).
+    fn apply_profile_network(&self, profile_id: &str) -> Result<Vec<SiteRule>, String> {
+        let sites = self.store.list_sites(Some(profile_id))?;
+        self.filter.clear_all().map_err(|e| e.to_string())?;
+        let enabled: Vec<_> = sites.into_iter().filter(|s| s.enabled).collect();
+        self.filter
+            .apply_batch(&enabled)
+            .map_err(|e| e.to_string())?;
+        let mut active = self.active.lock();
+        active.clear();
+        for s in &enabled {
+            active.insert(s.id.clone(), s.clone());
+        }
+        Ok(enabled)
     }
 
     /// Fix rows saved as full URLs before normalize existed.
@@ -118,24 +210,7 @@ impl Engine {
         self.filter.name()
     }
 
-    fn reapply_enabled(&self) -> Result<(), String> {
-        let sites = self.store.list_sites(None)?;
-        let enabled: Vec<_> = sites.into_iter().filter(|s| s.enabled).collect();
-        self.filter
-            .clear_all()
-            .map_err(|e| e.to_string())?;
-        self.filter
-            .apply_batch(&enabled)
-            .map_err(|e| e.to_string())?;
-        let mut active = self.active.lock();
-        active.clear();
-        for s in enabled {
-            active.insert(s.id.clone(), s);
-        }
-        Ok(())
-    }
-
-    /// Flip alias rows in DB only — caller must `reapply_enabled` after.
+    /// Flip alias rows in DB only (network applies on next session start).
     fn set_aliases_enabled(&self, site: &SiteRule) -> Result<(), String> {
         for &alias in domain_aliases(&site.domain) {
             if alias == site.domain {
@@ -195,25 +270,65 @@ impl Engine {
         }
     }
 
-    fn snapshot_session(&self) -> Option<FocusSession> {
-        let mut g = self.session.lock();
-        let Some(sess) = g.as_mut() else {
-            return None;
+    /// End the live session, persist history, clear network. `reason`: `manual` | `timer`.
+    fn finish_session(&self, reason: &str) -> Option<SessionRecord> {
+        let sess = {
+            let mut g = self.session.lock();
+            let Some(mut sess) = g.take() else {
+                return None;
+            };
+            Self::refresh_session_clock(&mut sess);
+            sess
         };
-        Self::refresh_session_clock(sess);
-        if sess.remaining_secs == 0 && sess.state == SessionState::Running {
-            // auto-end
-            *g = None;
-            let _ = self.reapply_enabled();
-            return None;
-        }
-        Some(FocusSession {
-            profile_id: sess.profile_id.clone(),
-            profile_name: sess.profile_name.clone(),
-            state: sess.state,
-            remaining_secs: sess.remaining_secs,
+        let _ = self.clear_network();
+        let ended_at = now_unix();
+        let elapsed_secs = (ended_at - sess.started_at).max(0) as u64;
+        let attempts: Vec<DomainHit> = self
+            .filter
+            .drain_block_hits()
+            .into_iter()
+            .map(|(domain, count)| DomainHit { domain, count })
+            .collect();
+        let total_attempts = attempts.iter().map(|a| a.count).sum();
+        let record = SessionRecord {
+            id: Uuid::new_v4().to_string(),
+            profile_id: sess.profile_id,
+            profile_name: sess.profile_name,
+            started_at: sess.started_at,
+            ended_at,
             duration_secs: sess.duration_secs,
-        })
+            elapsed_secs,
+            ended_reason: reason.into(),
+            total_attempts,
+            attempts,
+        };
+        if let Err(e) = self.store.insert_session_record(&record) {
+            eprintln!("[at-shield] save session history: {e}");
+        }
+        *self.pending_summary.lock() = Some(record.clone());
+        Some(record)
+    }
+
+    fn snapshot_session(&self) -> Option<FocusSession> {
+        {
+            let mut g = self.session.lock();
+            let Some(sess) = g.as_mut() else {
+                return None;
+            };
+            Self::refresh_session_clock(sess);
+            if sess.remaining_secs == 0 && sess.state == SessionState::Running {
+                drop(g);
+                self.finish_session("timer");
+                return None;
+            }
+            Some(FocusSession {
+                profile_id: sess.profile_id.clone(),
+                profile_name: sess.profile_name.clone(),
+                state: sess.state,
+                remaining_secs: sess.remaining_secs,
+                duration_secs: sess.duration_secs,
+            })
+        }
     }
 
     pub fn handle(&self, cmd: Command) -> Response {
@@ -225,19 +340,46 @@ impl Engine {
 
     fn handle_inner(&self, cmd: Command) -> Result<Response, String> {
         Ok(match cmd {
-            Command::Health => Response::Pong {
-                version: VERSION.to_string(),
-                protection_active: !self.active.lock().is_empty(),
+            Command::Health => {
+                self.touch_ui();
+                let enabled_sites = self
+                    .store
+                    .list_sites(None)?
+                    .into_iter()
+                    .filter(|s| s.enabled)
+                    .count() as u32;
+                let session_active = self.session.lock().is_some();
+                Response::Pong {
+                    version: VERSION.to_string(),
+                    protection_active: !self.active.lock().is_empty() || session_active,
+                    network_armed: self.filter.network_armed(),
+                    session_active,
+                    enabled_sites,
+                }
             },
             Command::ListProfiles => Response::Profiles(self.store.list_profiles()?),
             Command::ListSites { profile_id } => {
                 Response::Sites(self.store.list_sites(profile_id.as_deref())?)
             }
             Command::UpsertProfile { profile } => {
+                self.reject_if_session()?;
                 self.store.upsert_profile(&profile)?;
                 Response::Profile(profile)
             }
+            Command::DeleteProfile { id } => {
+                self.reject_if_session()?;
+                let profiles = self.store.list_profiles()?;
+                if profiles.len() <= 1 {
+                    return Err("precisa de pelo menos um perfil".into());
+                }
+                if !profiles.iter().any(|p| p.id == id) {
+                    return Err(format!("perfil não encontrado: {id}"));
+                }
+                self.store.delete_profile(&id)?;
+                Response::Empty
+            }
             Command::UpsertSite { mut site } => {
+                self.reject_if_session()?;
                 let domain = normalize_domain(&site.domain);
                 if domain.is_empty() || !domain.contains('.') {
                     return Err("domínio inválido — use algo como x.com".into());
@@ -263,20 +405,15 @@ impl Engine {
                 }
                 self.store.upsert_site(&site)?;
                 let _ = self.set_aliases_enabled(&site);
-                // Full rebuild so disable never leaves orphan IP blocks (QUIC errors).
-                if let Err(e) = self.reapply_enabled() {
-                    eprintln!("[at-shield] reapply after upsert: {e}");
-                }
                 Response::Site(site)
             }
             Command::DeleteSite { id } => {
+                self.reject_if_session()?;
                 self.delete_site_and_aliases(&id)?;
-                if let Err(e) = self.reapply_enabled() {
-                    eprintln!("[at-shield] reapply after delete: {e}");
-                }
                 Response::Empty
             }
             Command::SetEnabled { id, enabled } => {
+                self.reject_if_session()?;
                 let mut site = self
                     .store
                     .get_site(&id)?
@@ -284,9 +421,6 @@ impl Engine {
                 site.enabled = enabled;
                 self.store.upsert_site(&site)?;
                 let _ = self.set_aliases_enabled(&site);
-                if let Err(e) = self.reapply_enabled() {
-                    eprintln!("[at-shield] reapply after set_enabled: {e}");
-                }
                 Response::Site(
                     self.store
                         .get_site(&id)?
@@ -294,7 +428,8 @@ impl Engine {
                 )
             }
             Command::SetEnabledBatch { ids, enabled } => {
-                // ponytail: one round-trip from UI; rebuild WFP once after DB writes
+                self.reject_if_session()?;
+                // ponytail: one round-trip from UI; DB only — network on session start
                 let mut changed = Vec::new();
                 for id in &ids {
                     if let Some(mut site) = self.store.get_site(id)? {
@@ -304,26 +439,14 @@ impl Engine {
                         changed.push(site);
                     }
                 }
-                if let Err(e) = self.reapply_enabled() {
-                    eprintln!("[at-shield] reapply after set_enabled_batch: {e}");
-                }
                 Response::Sites(changed)
             }
-            Command::ApplyProfile { profile_id } => {
-                let sites = self.store.list_sites(Some(&profile_id))?;
-                self.filter.clear_all().map_err(|e| e.to_string())?;
-                let enabled: Vec<_> = sites.into_iter().filter(|s| s.enabled).collect();
-                self.filter
-                    .apply_batch(&enabled)
-                    .map_err(|e| e.to_string())?;
-                let mut active = self.active.lock();
-                active.clear();
-                for s in &enabled {
-                    active.insert(s.id.clone(), s.clone());
-                }
-                Response::Sites(enabled)
+            Command::ApplyProfile { .. } => {
+                // Blocks only via start_session.
+                return Err("bloqueio só via sessão — use iniciar sessão".into());
             }
             Command::SetRedirectPage { id, page_file } => {
+                self.reject_if_session()?;
                 let mut site = self
                     .store
                     .get_site(&id)?
@@ -337,15 +460,21 @@ impl Engine {
                 profile_id,
                 duration_secs,
             } => {
+                if self.session.lock().is_some() {
+                    return Err("já tem sessão ativa — encerre antes".into());
+                }
                 let profiles = self.store.list_profiles()?;
                 let profile = profiles
                     .into_iter()
                     .find(|p| p.id == profile_id)
                     .ok_or_else(|| format!("profile not found: {profile_id}"))?;
-                // apply profile rules immediately
-                let _ = self.handle_inner(Command::ApplyProfile {
-                    profile_id: profile_id.clone(),
-                })?;
+                // apply marked sites — don't abort session if WFP/hosts need Admin
+                if let Err(e) = self.apply_profile_network(&profile_id) {
+                    eprintln!("[at-shield] apply on session start: {e}");
+                }
+                self.filter.reset_block_hits();
+                *self.pending_summary.lock() = None;
+                self.touch_ui();
                 *self.session.lock() = Some(LiveSession {
                     profile_id: profile.id.clone(),
                     profile_name: profile.name.clone(),
@@ -353,42 +482,34 @@ impl Engine {
                     duration_secs,
                     remaining_secs: duration_secs,
                     tick_at: Instant::now(),
+                    started_at: now_unix(),
                 });
                 Response::Session(self.snapshot_session())
             }
-            Command::PauseSession => {
-                let mut g = self.session.lock();
-                if let Some(sess) = g.as_mut() {
-                    Self::refresh_session_clock(sess);
-                    sess.state = SessionState::Paused;
-                    // release network filters while paused
-                    let _ = self.filter.clear_all();
-                    self.active.lock().clear();
-                }
-                drop(g);
-                Response::Session(self.snapshot_session())
-            }
-            Command::ResumeSession => {
-                let mut g = self.session.lock();
-                if let Some(sess) = g.as_mut() {
-                    if sess.state == SessionState::Paused {
-                        sess.state = SessionState::Running;
-                        sess.tick_at = Instant::now();
-                        let pid = sess.profile_id.clone();
-                        drop(g);
-                        let _ = self.handle_inner(Command::ApplyProfile { profile_id: pid })?;
-                        return Ok(Response::Session(self.snapshot_session()));
-                    }
-                }
-                drop(g);
-                Response::Session(self.snapshot_session())
-            }
             Command::EndSession => {
-                *self.session.lock() = None;
-                self.reapply_enabled()?;
-                Response::Session(None)
+                let summary = self.finish_session("manual");
+                // consume pending — Flutter already got the summary in this response
+                let _ = self.pending_summary.lock().take();
+                Response::SessionSummary(summary)
             }
-            Command::GetSession => Response::Session(self.snapshot_session()),
+            Command::GetSession => {
+                self.touch_ui();
+                Response::Session(self.snapshot_session())
+            }
+            Command::PopSessionSummary => {
+                Response::SessionSummary(self.pending_summary.lock().take())
+            }
+            Command::ListSessionHistory => {
+                Response::SessionHistory(self.store.list_session_history()?)
+            }
+            Command::ClearSessionHistory => {
+                self.store.clear_session_history()?;
+                Response::Empty
+            }
+            Command::UiHeartbeat => {
+                self.touch_ui();
+                Response::Empty
+            }
         })
     }
 
@@ -505,12 +626,13 @@ mod tests {
     }
 
     #[test]
-    fn batch_toggle_updates_noop_filter() {
+    fn batch_toggle_is_db_only_until_session() {
         let dir = std::env::temp_dir().join(format!("at-shield-test-{}", uuid::Uuid::new_v4()));
         let store = Store::open(dir.join("t.db")).unwrap();
         let filter = Arc::new(NoopFilter::default());
         let eng = Engine::new(store, filter.clone()).unwrap();
         eng.warm_protection().unwrap();
+        assert!(filter.applied.lock().is_empty());
         let sites = match eng.handle(Command::ListSites { profile_id: None }) {
             Response::Sites(s) => s,
             _ => panic!("expected sites"),
@@ -519,34 +641,157 @@ mod tests {
         let ids: Vec<_> = sites.iter().map(|s| s.id.clone()).collect();
         eng.handle(Command::SetEnabledBatch {
             ids: ids.clone(),
-            enabled: false,
-        });
-        assert!(filter.applied.lock().is_empty());
-        eng.handle(Command::SetEnabledBatch {
-            ids,
             enabled: true,
         });
+        // marked in DB, but network idle until session
+        assert!(filter.applied.lock().is_empty());
+        eng.handle(Command::StartSession {
+            profile_id: "profile-trabalho".into(),
+            duration_secs: 60,
+        });
         assert!(!filter.applied.lock().is_empty());
+        eng.handle(Command::EndSession);
+        assert!(filter.applied.lock().is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
-    fn session_pause_clears_filters() {
-        let dir = std::env::temp_dir().join(format!("at-shield-sess-{}", uuid::Uuid::new_v4()));
+    fn cannot_edit_sites_during_session() {
+        let dir = std::env::temp_dir().join(format!("at-shield-lock-{}", uuid::Uuid::new_v4()));
         let store = Store::open(dir.join("t.db")).unwrap();
         let filter = Arc::new(NoopFilter::default());
-        let eng = Engine::new(store, filter.clone()).unwrap();
+        let eng = Engine::new(store, filter).unwrap();
+        eng.warm_protection().unwrap();
+        let sites = match eng.handle(Command::ListSites {
+            profile_id: Some("profile-trabalho".into()),
+        }) {
+            Response::Sites(s) => s,
+            _ => panic!("expected sites"),
+        };
+        let id = sites[0].id.clone();
+        eng.handle(Command::StartSession {
+            profile_id: "profile-trabalho".into(),
+            duration_secs: 60,
+        });
+        match eng.handle(Command::SetEnabled {
+            id: id.clone(),
+            enabled: false,
+        }) {
+            Response::Error { message } => assert!(message.contains("sessão")),
+            _ => panic!("expected reject during session"),
+        }
+        eng.handle(Command::EndSession);
+        match eng.handle(Command::SetEnabled { id, enabled: false }) {
+            Response::Site(_) => {}
+            _ => panic!("expected ok after session end"),
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cannot_start_second_session() {
+        let dir = std::env::temp_dir().join(format!("at-shield-2sess-{}", uuid::Uuid::new_v4()));
+        let store = Store::open(dir.join("t.db")).unwrap();
+        let filter = Arc::new(NoopFilter::default());
+        let eng = Engine::new(store, filter).unwrap();
         eng.warm_protection().unwrap();
         eng.handle(Command::StartSession {
             profile_id: "profile-trabalho".into(),
-            duration_secs: 3600,
+            duration_secs: 60,
         });
-        assert!(!filter.applied.lock().is_empty());
-        eng.handle(Command::PauseSession);
-        assert!(filter.applied.lock().is_empty());
-        eng.handle(Command::ResumeSession);
-        assert!(!filter.applied.lock().is_empty());
+        match eng.handle(Command::StartSession {
+            profile_id: "profile-estudos".into(),
+            duration_secs: 60,
+        }) {
+            Response::Error { message } => assert!(message.contains("sessão")),
+            other => panic!("expected reject, got {other:?}"),
+        }
         eng.handle(Command::EndSession);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn stale_ui_heartbeat_ends_session() {
+        let dir = std::env::temp_dir().join(format!("at-shield-hb-{}", uuid::Uuid::new_v4()));
+        let store = Store::open(dir.join("t.db")).unwrap();
+        let filter = Arc::new(NoopFilter::default());
+        let eng = Engine::new(store, filter).unwrap();
+        eng.warm_protection().unwrap();
+        eng.handle(Command::StartSession {
+            profile_id: "profile-trabalho".into(),
+            duration_secs: 600,
+        });
+        assert!(eng.snapshot_session().is_some());
+        *eng.ui_heartbeat.lock() = Some(Instant::now() - Duration::from_secs(30));
+        eng.reap_if_ui_gone();
+        assert!(eng.snapshot_session().is_none());
+        match eng.handle(Command::PopSessionSummary) {
+            Response::SessionSummary(None) => {}
+            other => panic!("ui_gone should not leave summary dialog, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn end_session_saves_history() {
+        let dir = std::env::temp_dir().join(format!("at-shield-hist-{}", uuid::Uuid::new_v4()));
+        let store = Store::open(dir.join("t.db")).unwrap();
+        let filter = Arc::new(NoopFilter::default());
+        let eng = Engine::new(store, filter).unwrap();
+        eng.warm_protection().unwrap();
+        eng.handle(Command::StartSession {
+            profile_id: "profile-trabalho".into(),
+            duration_secs: 120,
+        });
+        let summary = match eng.handle(Command::EndSession) {
+            Response::SessionSummary(Some(r)) => r,
+            other => panic!("expected summary, got {other:?}"),
+        };
+        assert_eq!(summary.profile_name, "Trabalho");
+        assert_eq!(summary.ended_reason, "manual");
+        assert!(summary.ended_at >= summary.started_at);
+        let hist = match eng.handle(Command::ListSessionHistory) {
+            Response::SessionHistory(h) => h,
+            _ => panic!("expected history"),
+        };
+        assert_eq!(hist.len(), 1);
+        assert_eq!(hist[0].id, summary.id);
+        // manual end consumes pending (UI got it in the response)
+        match eng.handle(Command::PopSessionSummary) {
+            Response::SessionSummary(None) => {}
+            _ => panic!("expected empty pending after manual end"),
+        }
+        match eng.handle(Command::ClearSessionHistory) {
+            Response::Empty => {}
+            other => panic!("expected empty, got {other:?}"),
+        }
+        let hist = match eng.handle(Command::ListSessionHistory) {
+            Response::SessionHistory(h) => h,
+            _ => panic!("expected history"),
+        };
+        assert!(hist.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn history_older_than_30_days_is_purged() {
+        let dir = std::env::temp_dir().join(format!("at-shield-purge-{}", uuid::Uuid::new_v4()));
+        let store = Store::open(dir.join("t.db")).unwrap();
+        let old = SessionRecord {
+            id: "old".into(),
+            profile_id: "p".into(),
+            profile_name: "Old".into(),
+            started_at: 1_000_000, // ancient
+            ended_at: 1_000_100,
+            duration_secs: 100,
+            elapsed_secs: 100,
+            ended_reason: "manual".into(),
+            total_attempts: 0,
+            attempts: vec![],
+        };
+        store.insert_session_record(&old).unwrap();
+        assert_eq!(store.purge_session_history_older_than(30 * 24 * 60 * 60).unwrap(), 1);
+        assert!(store.list_session_history().unwrap().is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 }

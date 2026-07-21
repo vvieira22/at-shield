@@ -27,10 +27,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"at_shield", origin, size)) {
+  if (!window.Create(L"A.T. Shield", origin, size)) {
     return EXIT_FAILURE;
   }
-  window.SetQuitOnClose(true);
+  // Close/minimize honor Config → "Minimizar para a bandeja".
+  // Quit via tray menu "Sair" or normal close when tray is off.
+  window.SetQuitOnClose(false);
 
   ::MSG msg;
   while (::GetMessage(&msg, nullptr, 0, 0)) {
