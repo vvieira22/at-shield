@@ -46,6 +46,18 @@ impl Store {
               key TEXT PRIMARY KEY,
               value TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS session_history (
+              id TEXT PRIMARY KEY,
+              profile_id TEXT NOT NULL,
+              profile_name TEXT NOT NULL,
+              started_at INTEGER NOT NULL,
+              ended_at INTEGER NOT NULL,
+              duration_secs INTEGER NOT NULL,
+              elapsed_secs INTEGER NOT NULL,
+              ended_reason TEXT NOT NULL,
+              total_attempts INTEGER NOT NULL DEFAULT 0,
+              attempts_json TEXT NOT NULL DEFAULT '[]'
+            );
             "#,
         )
         .map_err(|e| e.to_string())?;
@@ -218,7 +230,99 @@ impl Store {
         Ok(())
     }
 
+    pub fn delete_profile(&self, id: &str) -> Result<(), String> {
+        let c = self.conn()?;
+        c.execute("DELETE FROM sites WHERE profile_id=?1", params![id])
+            .map_err(|e| e.to_string())?;
+        c.execute("DELETE FROM profiles WHERE id=?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn get_site(&self, id: &str) -> Result<Option<SiteRule>, String> {
         Ok(self.list_sites(None)?.into_iter().find(|s| s.id == id))
+    }
+
+    pub fn insert_session_record(&self, r: &SessionRecord) -> Result<(), String> {
+        let attempts_json =
+            serde_json::to_string(&r.attempts).map_err(|e| e.to_string())?;
+        self.conn()?
+            .execute(
+                "INSERT INTO session_history(
+                   id, profile_id, profile_name, started_at, ended_at,
+                   duration_secs, elapsed_secs, ended_reason, total_attempts, attempts_json
+                 ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                params![
+                    r.id,
+                    r.profile_id,
+                    r.profile_name,
+                    r.started_at,
+                    r.ended_at,
+                    r.duration_secs as i64,
+                    r.elapsed_secs as i64,
+                    r.ended_reason,
+                    r.total_attempts as i64,
+                    attempts_json,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn list_session_history(&self) -> Result<Vec<SessionRecord>, String> {
+        self.purge_session_history_older_than(30 * 24 * 60 * 60)?;
+        let c = self.conn()?;
+        let mut stmt = c
+            .prepare(
+                "SELECT id, profile_id, profile_name, started_at, ended_at,
+                        duration_secs, elapsed_secs, ended_reason, total_attempts, attempts_json
+                 FROM session_history ORDER BY started_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                let attempts_json: String = row.get(9)?;
+                let attempts: Vec<DomainHit> =
+                    serde_json::from_str(&attempts_json).unwrap_or_default();
+                Ok(SessionRecord {
+                    id: row.get(0)?,
+                    profile_id: row.get(1)?,
+                    profile_name: row.get(2)?,
+                    started_at: row.get(3)?,
+                    ended_at: row.get(4)?,
+                    duration_secs: row.get::<_, i64>(5)? as u64,
+                    elapsed_secs: row.get::<_, i64>(6)? as u64,
+                    ended_reason: row.get(7)?,
+                    total_attempts: row.get::<_, i64>(8)? as u32,
+                    attempts,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Delete history older than `max_age_secs` (based on `started_at`).
+    pub fn purge_session_history_older_than(&self, max_age_secs: i64) -> Result<u32, String> {
+        let cutoff = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
+            .saturating_sub(max_age_secs);
+        let n = self
+            .conn()?
+            .execute(
+                "DELETE FROM session_history WHERE started_at < ?1",
+                params![cutoff],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n as u32)
+    }
+
+    pub fn clear_session_history(&self) -> Result<(), String> {
+        self.conn()?
+            .execute("DELETE FROM session_history", [])
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 }

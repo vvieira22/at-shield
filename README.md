@@ -40,7 +40,7 @@ Precisa do Visual Studio Build Tools (C++) para `cargo` e Flutter Windows.
 
 ## Páginas custom
 
-Pasta `pages/` — preview em `http://127.0.0.1:47831/`.
+Pasta `pages/` — preview em `http://127.0.0.1:47831/`. Também aceita caminho absoluto de um `.html` em qualquer pasta (Painel → Procurar…).
 
 Com **Redirecionar → Página personalizada**, o serviço escreve o domínio no `hosts` (`127.0.0.1`) e serve o HTML em `:80`/`:443` (certificado local instalado no Root). Precisa **Admin**.
 

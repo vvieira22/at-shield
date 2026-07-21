@@ -1,4 +1,7 @@
-//! Pin blocked domains to 127.0.0.1 via the Windows hosts file.
+//! Pin blocked domains to a dedicated loopback IP via the Windows hosts file.
+//!
+//! Uses 127.0.0.2 (not 127.0.0.1) so localhost / lvh.me / other local :80/:443
+//! services keep working while custom block pages still sinkhole.
 //!
 //! ponytail: only used for RedirectTarget::CustomPage so the local page server
 //! can answer. Hard-block mode stays on WFP (no hosts). Ceiling = hosts is
@@ -11,11 +14,14 @@ use std::path::PathBuf;
 const BEGIN: &str = "# BEGIN AT_SHIELD";
 const END: &str = "# END AT_SHIELD";
 
+/// Loopback alias for custom-page sinkhole — keep off 127.0.0.1.
+pub const SINKHOLE_IP: &str = "127.0.0.2";
+
 fn hosts_path() -> PathBuf {
     PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts")
 }
 
-/// Replace our marked block with `lines` (each already "127.0.0.1 domain").
+/// Replace our marked block with `lines` (each already "{SINKHOLE_IP} domain").
 pub fn rewrite(entries: &[String]) -> Result<(), String> {
     let path = hosts_path();
     let mut raw = String::new();
@@ -80,9 +86,9 @@ pub fn clear() -> Result<(), String> {
 
 /// Build hosts lines for a domain (+ www if subdomains).
 pub fn lines_for(domain: &str, include_subdomains: bool) -> Vec<String> {
-    let mut v = vec![format!("127.0.0.1 {domain}")];
+    let mut v = vec![format!("{SINKHOLE_IP} {domain}")];
     if include_subdomains {
-        v.push(format!("127.0.0.1 www.{domain}"));
+        v.push(format!("{SINKHOLE_IP} www.{domain}"));
     }
     v
 }
@@ -95,5 +101,7 @@ mod tests {
     fn lines_include_www() {
         let l = lines_for("x.com", true);
         assert!(l.iter().any(|s| s.contains("www.x.com")));
+        assert!(l.iter().all(|s| s.starts_with(SINKHOLE_IP)));
+        assert!(!l.iter().any(|s| s.contains("127.0.0.1")));
     }
 }

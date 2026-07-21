@@ -19,6 +19,7 @@ pub enum Command {
     ListProfiles,
     ListSites { profile_id: Option<String> },
     UpsertProfile { profile: Profile },
+    DeleteProfile { id: String },
     UpsertSite { site: SiteRule },
     DeleteSite { id: String },
     SetEnabled { id: String, enabled: bool },
@@ -29,10 +30,14 @@ pub enum Command {
         profile_id: String,
         duration_secs: u64,
     },
-    PauseSession,
-    ResumeSession,
     EndSession,
     GetSession,
+    /// Take the summary left by timer auto-end (or last EndSession).
+    PopSessionSummary,
+    ListSessionHistory,
+    ClearSessionHistory,
+    /// UI liveness ping — if this stops while a session is on, protection is cleared.
+    UiHeartbeat,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,12 +46,20 @@ pub enum Response {
     Pong {
         version: String,
         protection_active: bool,
+        /// WFP/hosts actually live (false = tracking-only, precisa Admin).
+        network_armed: bool,
+        /// Focus session currently active.
+        session_active: bool,
+        /// Enabled site rules in DB (any profile).
+        enabled_sites: u32,
     },
     Profiles(Vec<Profile>),
     Sites(Vec<SiteRule>),
     Site(SiteRule),
     Profile(Profile),
     Session(Option<FocusSession>),
+    SessionSummary(Option<SessionRecord>),
+    SessionHistory(Vec<SessionRecord>),
     Empty,
     Error { message: String },
 }

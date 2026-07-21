@@ -2,9 +2,16 @@ import 'package:at_shield_ui/at_shield_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../engine/local_prefs.dart';
 import '../engine/models.dart';
 import '../engine/shield_cubit.dart';
+import 'config_panel.dart';
+import 'history_panel.dart';
+import 'pages_panel.dart';
+import 'profiles_panel.dart';
+import 'security_panel.dart';
 import 'session_header.dart';
+import 'session_summary_dialog.dart';
 import 'sidebar.dart';
 import 'sites_panel.dart';
 
@@ -17,41 +24,93 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   String _section = 'painel';
+  LocalPrefs? _prefs;
+  bool _locked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await LocalPrefs.open();
+    if (!mounted) return;
+    setState(() {
+      _prefs = prefs;
+      _locked = prefs.pinEnabled && (prefs.pin?.isNotEmpty ?? false);
+    });
+  }
+
+  void _refreshPrefs() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
+    if (_locked && _prefs?.pin != null) {
+      return PinLockGate(
+        pin: _prefs!.pin!,
+        onUnlocked: () => setState(() => _locked = false),
+        onPinCleared: () async {
+          final prefs = await LocalPrefs.open();
+          if (!mounted) return;
+          setState(() {
+            _prefs = prefs;
+            _locked = false;
+          });
+        },
+      );
+    }
+
     return Scaffold(
-      body: Row(
-        children: [
-          AppSidebar(
-            section: _section,
-            onSelect: (id) => setState(() => _section = id),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                const SessionHeader(),
-              BlocBuilder<ShieldCubit, ShieldState>(
-                builder: (context, state) {
-                  if (state.error == null) return const SizedBox.shrink();
-                  return Material(
-                    color: AtShieldColors.accentDim,
-                    child: ListTile(
-                      dense: true,
-                      title: Text(state.error!, style: const TextStyle(fontSize: 13)),
-                      trailing: TextButton(
-                        onPressed: () => context.read<ShieldCubit>().boot(),
-                        child: const Text('Reconectar'),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              Expanded(child: _body()),
-              ],
+      body: BlocListener<ShieldCubit, ShieldState>(
+        listenWhen: (prev, next) =>
+            next.lastSummary != null &&
+            next.lastSummary?.id != prev.lastSummary?.id,
+        listener: (context, state) {
+          final summary = state.lastSummary;
+          if (summary == null) return;
+          showSessionSummaryDialog(context, summary).then((_) {
+            if (context.mounted) {
+              context.read<ShieldCubit>().clearLastSummary();
+            }
+          });
+        },
+        child: Row(
+          children: [
+            AppSidebar(
+              section: _section,
+              onSelect: (id) => setState(() => _section = id),
             ),
-          ),
-        ],
+            Expanded(
+              child: Column(
+                children: [
+                  const SessionHeader(),
+                  BlocBuilder<ShieldCubit, ShieldState>(
+                    builder: (context, state) {
+                      if (state.error == null) return const SizedBox.shrink();
+                      return Material(
+                        color: AtShieldColors.accentDim,
+                        child: ListTile(
+                          dense: true,
+                          title: Text(
+                            state.error!,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          trailing: TextButton(
+                            onPressed: () =>
+                                context.read<ShieldCubit>().boot(),
+                            child: const Text('Reconectar'),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  Expanded(child: _body()),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -61,49 +120,24 @@ class _HomeShellState extends State<HomeShell> {
       case 'painel':
         return const SitesPanel();
       case 'perfis':
-        return const _SimplePage(
-          title: 'Perfis',
-          body: 'Gerencie perfis no painel — Trabalho, Estudos, Detox.',
-        );
+        return const ProfilesPanel();
+      case 'historico':
+        return const HistoryPanel();
       case 'paginas':
-        return const _SimplePage(
-          title: 'Página de bloqueio',
-          body: 'HTML em /pages. Preview: 127.0.0.1:47831. Com "Página personalizada" o hosts aponta o domínio pra cá (precisa Admin).',
-        );
+        return const PagesPanel();
       case 'seguranca':
-        return const _SimplePage(
-          title: 'Segurança',
-          body: 'PIN / 2FA — premium (estrutura pronta).',
+        return SecurityPanel(
+          prefs: _prefs,
+          onPrefsChanged: _refreshPrefs,
+          onLock: () => setState(() => _locked = true),
         );
       case 'config':
-        return const _SimplePage(
-          title: 'Configurações',
-          body: 'Serviço em background: at-shield-service. IPC 127.0.0.1:47830.',
+        return ConfigPanel(
+          prefs: _prefs,
+          onPrefsChanged: _refreshPrefs,
         );
       default:
         return const SitesPanel();
     }
-  }
-}
-
-class _SimplePage extends StatelessWidget {
-  const _SimplePage({required this.title, required this.body});
-
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 12),
-          Text(body, style: const TextStyle(color: AtShieldColors.muted)),
-        ],
-      ),
-    );
   }
 }
