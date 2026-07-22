@@ -39,6 +39,18 @@ class Win32Window {
   // Show the current window. Returns true if the window was successfully shown.
   bool Show();
 
+  /// Hide window and keep running in the notification area.
+  void HideToTray();
+
+  /// Show + focus window (and ensure tray icon exists).
+  void RestoreFromTray();
+
+  /// Ask to quit (Flutter may confirm if a session is running).
+  virtual void RequestQuit();
+
+  /// Hover text on the notification-area icon (UTF-8 from Flutter).
+  void SetTrayTooltip(const std::string& tip_utf8);
+
   // Release OS resources associated with window.
   void Destroy();
 
@@ -50,6 +62,7 @@ class Win32Window {
   HWND GetHandle();
 
   // If true, closing this window will quit the application.
+  // When false (default for tray apps), close/minimize hide to tray instead.
   void SetQuitOnClose(bool quit_on_close);
 
   // Return a RECT representing the bounds of the current client area.
@@ -71,6 +84,9 @@ class Win32Window {
   // Called when Destroy is called.
   virtual void OnDestroy();
 
+  /// Destroy window + tray and exit the process message loop.
+  void QuitApp();
+
  private:
   friend class WindowClassRegistrar;
 
@@ -90,7 +106,14 @@ class Win32Window {
   // Update the window frame's theme to match the system theme.
   static void UpdateTheme(HWND const window);
 
+  void EnsureTrayIcon();
+  void RemoveTrayIcon();
+  void ShowTrayMenu();
+
   bool quit_on_close_ = false;
+  bool tray_added_ = false;
+  NOTIFYICONDATAW tray_data_{};
+  std::wstring tray_tip_ = L"A.T. Shield";
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

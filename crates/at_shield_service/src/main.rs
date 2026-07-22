@@ -54,12 +54,13 @@ fn run_console() -> Result<(), String> {
         engine.filter_name(),
         at_shield_core::PIPE_NAME
     );
-    // ponytail: apply WFP/DNS in background so IPC binds immediately (UI won't see "offline")
+    engine.spawn_ui_watchdog();
+    // ponytail: migrate + clear leftover hosts; blocks only on session start
     let warm = engine.clone();
     std::thread::spawn(move || {
-        eprintln!("[at-shield] applying protection rules...");
+        eprintln!("[at-shield] warming service (no blocks until session)...");
         match warm.warm_protection() {
-            Ok(()) => eprintln!("[at-shield] protection ready"),
+            Ok(()) => eprintln!("[at-shield] ready"),
             Err(e) => eprintln!("[at-shield] warm failed: {e}"),
         }
     });
@@ -150,6 +151,7 @@ fn run_as_service() -> Result<(), String> {
         });
 
         if let Ok(engine) = build_engine() {
+            engine.spawn_ui_watchdog();
             let warm = engine.clone();
             std::thread::spawn(move || {
                 let _ = warm.warm_protection();

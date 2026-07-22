@@ -2,7 +2,10 @@
 
 #include <optional>
 
+#include <flutter/standard_method_codec.h>
+
 #include "flutter/generated_plugin_registrant.h"
+#include "utils.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -26,10 +29,20 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  SetupWindowChannel();
 
-  flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
-  });
+  const bool start_minimized = PrefsStartMinimized();
+  const bool to_tray = PrefsMinimizeToTray();
+  flutter_controller_->engine()->SetNextFrameCallback(
+      [this, start_minimized, to_tray]() {
+        if (start_minimized && to_tray) {
+          this->HideToTray();
+        } else if (start_minimized) {
+          ShowWindow(this->GetHandle(), SW_SHOWMINIMIZED);
+        } else {
+          this->Show();
+        }
+      });
 
   // Flutter can complete the first frame before the "show window" callback is
   // registered. The following call ensures a frame is pending to ensure the
@@ -39,7 +52,46 @@ bool FlutterWindow::OnCreate() {
   return true;
 }
 
+void FlutterWindow::SetupWindowChannel() {
+  if (!flutter_controller_ || !flutter_controller_->engine()) {
+    return;
+  }
+  window_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "at_shield/window",
+          &flutter::StandardMethodCodec::GetInstance());
+  window_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() == "quit") {
+          this->QuitApp();
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "setTrayTip") {
+          const auto* args = std::get_if<std::string>(call.arguments());
+          if (args) {
+            this->SetTrayTooltip(*args);
+          }
+          result->Success();
+          return;
+        }
+        result->NotImplemented();
+      });
+}
+
+void FlutterWindow::RequestQuit() {
+  if (!window_channel_) {
+    QuitApp();
+    return;
+  }
+  // Flutter shows a confirm dialog when a session is active, then calls "quit".
+  window_channel_->InvokeMethod("closeRequested", nullptr);
+}
+
 void FlutterWindow::OnDestroy() {
+  window_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

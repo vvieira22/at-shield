@@ -46,58 +46,122 @@ impl Store {
               key TEXT PRIMARY KEY,
               value TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS session_history (
+              id TEXT PRIMARY KEY,
+              profile_id TEXT NOT NULL,
+              profile_name TEXT NOT NULL,
+              started_at INTEGER NOT NULL,
+              ended_at INTEGER NOT NULL,
+              duration_secs INTEGER NOT NULL,
+              elapsed_secs INTEGER NOT NULL,
+              ended_reason TEXT NOT NULL,
+              total_attempts INTEGER NOT NULL DEFAULT 0,
+              attempts_json TEXT NOT NULL DEFAULT '[]'
+            );
             "#,
         )
         .map_err(|e| e.to_string())?;
         Ok(())
     }
 
-    pub fn seed_if_empty(&self) -> Result<(), String> {
-        let c = self.conn()?;
-        let n: i64 = c
-            .query_row("SELECT COUNT(*) FROM profiles", [], |r| r.get(0))
-            .map_err(|e| e.to_string())?;
-        if n > 0 {
-            return Ok(());
-        }
-        drop(c);
-        let trabalho = Profile {
-            id: "profile-trabalho".into(),
-            name: "Trabalho".into(),
-            sort_order: 0,
-        };
-        let estudos = Profile {
-            id: "profile-estudos".into(),
-            name: "Estudos".into(),
-            sort_order: 1,
-        };
-        let detox = Profile {
-            id: "profile-detox".into(),
-            name: "Detox".into(),
-            sort_order: 2,
-        };
-        self.upsert_profile(&trabalho)?;
-        self.upsert_profile(&estudos)?;
-        self.upsert_profile(&detox)?;
+    /// Built-in profiles — always present, never deletable.
+    pub const BUILTIN_PROFILES: &[&str] = &[
+        "profile-estudo",
+        "profile-detox-total",
+        "profile-adulto",
+    ];
 
-        let seeds = [
-            ("instagram.com", "foco.html", true),
-            ("facebook.com", "foco.html", true),
-            ("twitter.com", "detox.html", true),
-            ("tiktok.com", "detox.html", true),
-            ("youtube.com", "foco.html", false),
-            ("reddit.com", "foco.html", true),
-            ("netflix.com", "detox.html", false),
-            ("twitch.tv", "foco.html", true),
-            ("linkedin.com", "foco.html", false),
-            ("pinterest.com", "detox.html", true),
-            ("discord.com", "foco.html", true),
-            ("x.com", "detox.html", true),
-        ];
-        for (domain, page, enabled) in seeds {
-            let mut s = SiteRule::new(&trabalho.id, domain);
+    pub fn is_builtin_profile(id: &str) -> bool {
+        Self::BUILTIN_PROFILES.contains(&id)
+    }
+
+    /// Ensures the three built-in profiles exist with a lean site list.
+    /// Also removes leftover seed profiles from older versions.
+    pub fn seed_if_empty(&self) -> Result<(), String> {
+        for stale in ["profile-trabalho", "profile-estudos", "profile-detox"] {
+            if self.list_profiles()?.iter().any(|p| p.id == stale) {
+                self.delete_profile(stale)?;
+            }
+        }
+        // Estudo — top distractions while studying
+        self.ensure_default_profile(
+            "profile-estudo",
+            "Estudo",
+            0,
+            &[
+                ("youtube.com", "foco.html"),
+                ("instagram.com", "foco.html"),
+                ("tiktok.com", "foco.html"),
+                ("twitter.com", "foco.html"),
+                ("x.com", "foco.html"),
+                ("facebook.com", "foco.html"),
+                ("reddit.com", "foco.html"),
+                ("discord.com", "foco.html"),
+                ("twitch.tv", "foco.html"),
+            ],
+        )?;
+        // Detox total — social + entertainment
+        self.ensure_default_profile(
+            "profile-detox-total",
+            "Detox total",
+            1,
+            &[
+                ("instagram.com", "detox.html"),
+                ("facebook.com", "detox.html"),
+                ("tiktok.com", "detox.html"),
+                ("twitter.com", "detox.html"),
+                ("x.com", "detox.html"),
+                ("youtube.com", "detox.html"),
+                ("reddit.com", "detox.html"),
+                ("netflix.com", "detox.html"),
+                ("twitch.tv", "detox.html"),
+                ("discord.com", "detox.html"),
+                ("whatsapp.com", "detox.html"),
+                ("pinterest.com", "detox.html"),
+            ],
+        )?;
+        // Adulto — most-visited adult sites
+        self.ensure_default_profile(
+            "profile-adulto",
+            "Adulto",
+            2,
+            &[
+                ("pornhub.com", "foco.html"),
+                ("xvideos.com", "foco.html"),
+                ("xnxx.com", "foco.html"),
+                ("xhamster.com", "foco.html"),
+                ("onlyfans.com", "foco.html"),
+                ("chaturbate.com", "foco.html"),
+                ("redtube.com", "foco.html"),
+                ("spankbang.com", "foco.html"),
+                ("erome.com", "foco.html"),
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn ensure_default_profile(
+        &self,
+        id: &str,
+        name: &str,
+        sort_order: i32,
+        sites: &[(&str, &str)],
+    ) -> Result<(), String> {
+        let exists = self.list_profiles()?.iter().any(|p| p.id == id);
+        if !exists {
+            self.upsert_profile(&Profile {
+                id: id.into(),
+                name: name.into(),
+                sort_order,
+            })?;
+        }
+        let existing = self.list_sites(Some(id))?;
+        for &(domain, page) in sites {
+            if existing.iter().any(|s| s.domain == domain) {
+                continue;
+            }
+            let mut s = SiteRule::new(id, domain);
             s.page_file = page.into();
-            s.enabled = enabled;
             self.upsert_site(&s)?;
         }
         Ok(())
@@ -218,7 +282,99 @@ impl Store {
         Ok(())
     }
 
+    pub fn delete_profile(&self, id: &str) -> Result<(), String> {
+        let c = self.conn()?;
+        c.execute("DELETE FROM sites WHERE profile_id=?1", params![id])
+            .map_err(|e| e.to_string())?;
+        c.execute("DELETE FROM profiles WHERE id=?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn get_site(&self, id: &str) -> Result<Option<SiteRule>, String> {
         Ok(self.list_sites(None)?.into_iter().find(|s| s.id == id))
+    }
+
+    pub fn insert_session_record(&self, r: &SessionRecord) -> Result<(), String> {
+        let attempts_json =
+            serde_json::to_string(&r.attempts).map_err(|e| e.to_string())?;
+        self.conn()?
+            .execute(
+                "INSERT INTO session_history(
+                   id, profile_id, profile_name, started_at, ended_at,
+                   duration_secs, elapsed_secs, ended_reason, total_attempts, attempts_json
+                 ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                params![
+                    r.id,
+                    r.profile_id,
+                    r.profile_name,
+                    r.started_at,
+                    r.ended_at,
+                    r.duration_secs as i64,
+                    r.elapsed_secs as i64,
+                    r.ended_reason,
+                    r.total_attempts as i64,
+                    attempts_json,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn list_session_history(&self) -> Result<Vec<SessionRecord>, String> {
+        self.purge_session_history_older_than(30 * 24 * 60 * 60)?;
+        let c = self.conn()?;
+        let mut stmt = c
+            .prepare(
+                "SELECT id, profile_id, profile_name, started_at, ended_at,
+                        duration_secs, elapsed_secs, ended_reason, total_attempts, attempts_json
+                 FROM session_history ORDER BY started_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                let attempts_json: String = row.get(9)?;
+                let attempts: Vec<DomainHit> =
+                    serde_json::from_str(&attempts_json).unwrap_or_default();
+                Ok(SessionRecord {
+                    id: row.get(0)?,
+                    profile_id: row.get(1)?,
+                    profile_name: row.get(2)?,
+                    started_at: row.get(3)?,
+                    ended_at: row.get(4)?,
+                    duration_secs: row.get::<_, i64>(5)? as u64,
+                    elapsed_secs: row.get::<_, i64>(6)? as u64,
+                    ended_reason: row.get(7)?,
+                    total_attempts: row.get::<_, i64>(8)? as u32,
+                    attempts,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Delete history older than `max_age_secs` (based on `started_at`).
+    pub fn purge_session_history_older_than(&self, max_age_secs: i64) -> Result<u32, String> {
+        let cutoff = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
+            .saturating_sub(max_age_secs);
+        let n = self
+            .conn()?
+            .execute(
+                "DELETE FROM session_history WHERE started_at < ?1",
+                params![cutoff],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n as u32)
+    }
+
+    pub fn clear_session_history(&self) -> Result<(), String> {
+        self.conn()?
+            .execute("DELETE FROM session_history", [])
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 }
