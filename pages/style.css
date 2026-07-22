@@ -125,6 +125,13 @@ h1 {
   margin: 0;
 }
 
+/* Foco is read at a glance, so its copy should not require browser zoom. */
+.theme-foco main { padding-bottom: 5.25rem; }
+.theme-foco .brand { font-size: 0.9rem; }
+.theme-foco h1 { font-size: clamp(3.15rem, 8.25vw, 4.5rem); }
+.theme-foco .sub { font-size: 1.47rem; max-width: 36rem; }
+.theme-foco .credits p { font-size: clamp(1.8rem, 5.1vw, 2.3rem); max-width: 42rem; }
+
 @keyframes scene-breathe {
   0%, 100% { filter: brightness(1) saturate(1.08); }
   50% { filter: brightness(1.04) saturate(1.14); }
