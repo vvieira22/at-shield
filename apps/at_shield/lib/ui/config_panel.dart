@@ -6,6 +6,7 @@ import '../engine/local_prefs.dart';
 import '../engine/models.dart';
 import '../engine/pick_html.dart';
 import '../engine/shield_cubit.dart';
+import '../l10n/locale_controller.dart';
 import 'section_frame.dart';
 
 class ConfigPanel extends StatelessWidget {
@@ -23,33 +24,33 @@ class ConfigPanel extends StatelessWidget {
     return BlocBuilder<ShieldCubit, ShieldState>(
       builder: (context, state) {
         return SectionFrame(
-          title: 'Configurações',
-          subtitle: 'Serviço, IPC e preferências locais da UI.',
+          title: s.settings,
+          subtitle: s.settingsSubtitle,
           child: ListView(
             children: [
               SurfaceCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Serviço',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                    Text(
+                      s.service,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 12),
                     _kv(
-                      'Status',
-                      state.connected ? 'Online' : 'Offline',
+                      s.status,
+                      state.connected ? s.online : s.offline,
                       valueColor: state.connected
                           ? AtShieldColors.success
                           : AtShieldColors.accent,
                     ),
                     _kv(
-                      'Proteção',
+                      s.protection,
                       !state.protectionActive && state.enabledSitesTotal == 0
-                          ? 'Inativa'
+                          ? s.protectionInactive
                           : state.networkArmed
-                              ? 'Ativa (rede)'
-                              : 'Configurado · precisa Admin',
+                              ? s.protectionActiveNetwork
+                              : s.protectionConfiguredNeedsAdmin,
                       valueColor: state.networkArmed
                           ? AtShieldColors.success
                           : (state.protectionActive ||
@@ -57,23 +58,23 @@ class ConfigPanel extends StatelessWidget {
                               ? const Color(0xFFEAB308)
                               : AtShieldColors.muted,
                     ),
-                    _kv('Versão', state.version),
-                    _kv('IPC', '127.0.0.1:47830'),
-                    _kv('Preview HTML', '127.0.0.1:47831'),
+                    _kv(s.version, state.version),
+                    _kv(s.ipc, '127.0.0.1:47830'),
+                    _kv(s.previewHtml, '127.0.0.1:47831'),
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
                         AtRedButton(
-                          label: 'Reconectar',
+                          label: s.reconnect,
                           icon: Icons.refresh,
                           dense: true,
                           onPressed: () =>
                               context.read<ShieldCubit>().boot(),
                         ),
                         AtRedButton(
-                          label: 'Abrir preview',
+                          label: s.openPreview,
                           icon: Icons.open_in_browser,
                           dense: true,
                           outlined: true,
@@ -89,15 +90,14 @@ class ConfigPanel extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Preferências',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                    Text(
+                      s.preferences,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 8),
                     _toggleRow(
-                      title: 'Minimizar para a bandeja',
-                      subtitle:
-                          'Minimizar ou fechar (X) esconde na bandeja e continua rodando',
+                      title: s.minimizeToTray,
+                      subtitle: s.minimizeToTraySub,
                       value: prefs?.minimizeToTray ?? false,
                       onChanged: prefs == null
                           ? null
@@ -108,10 +108,10 @@ class ConfigPanel extends StatelessWidget {
                     ),
                     const Divider(color: AtShieldColors.border, height: 20),
                     _toggleRow(
-                      title: 'Iniciar na bandeja',
+                      title: s.startMinimized,
                       subtitle: prefs?.minimizeToTray == true
-                          ? 'Abre direto na bandeja do sistema'
-                          : 'Ative “Minimizar para a bandeja” antes',
+                          ? s.startMinimizedSubEnabled
+                          : s.startMinimizedSubDisabled,
                       value: prefs?.startMinimized ?? false,
                       onChanged: prefs == null || prefs?.minimizeToTray != true
                           ? null
@@ -122,8 +122,8 @@ class ConfigPanel extends StatelessWidget {
                     ),
                     const Divider(color: AtShieldColors.border, height: 20),
                     _toggleRow(
-                      title: 'Abrir com o Windows',
-                      subtitle: 'Preferência salva — registro no instalador',
+                      title: s.launchWithWindows,
+                      subtitle: s.launchWithWindowsSub,
                       value: prefs?.launchWithWindows ?? false,
                       onChanged: prefs == null
                           ? null
@@ -132,14 +132,40 @@ class ConfigPanel extends StatelessWidget {
                               onPrefsChanged();
                             },
                     ),
+                    const Divider(color: AtShieldColors.border, height: 20),
+                    Text(
+                      s.language,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        _LangButton(
+                          label: s.languagePt,
+                          selected: LocaleController.instance.lang == AppLang.pt,
+                          onPressed: () async {
+                            await LocaleController.instance.setLang(AppLang.pt);
+                            onPrefsChanged();
+                          },
+                        ),
+                        _LangButton(
+                          label: s.languageEn,
+                          selected: LocaleController.instance.lang == AppLang.en,
+                          onPressed: () async {
+                            await LocaleController.instance.setLang(AppLang.en);
+                            onPrefsChanged();
+                          },
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Rode scripts\\dev-windows.bat pra subir UI + serviço. '
-                'Redirect de página personalizada precisa de Admin.',
-                style: TextStyle(color: AtShieldColors.muted, fontSize: 12),
+              Text(
+                s.configFootnote,
+                style: const TextStyle(color: AtShieldColors.muted, fontSize: 12),
               ),
             ],
           ),
@@ -201,6 +227,34 @@ class ConfigPanel extends StatelessWidget {
         ),
         AtToggle(value: value, onChanged: onChanged),
       ],
+    );
+  }
+}
+
+class _LangButton extends StatelessWidget {
+  const _LangButton({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        backgroundColor: selected
+            ? AtShieldColors.accent.withValues(alpha: 0.15)
+            : Colors.transparent,
+        side: BorderSide(
+          color: selected ? AtShieldColors.accent : AtShieldColors.border,
+        ),
+      ),
+      child: Text(label),
     );
   }
 }

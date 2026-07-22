@@ -3,8 +3,9 @@
 //! - :47831 preview on 127.0.0.1
 //! - :80 / :443 sinkhole on 127.0.0.2 (hosts pins blocked domains there)
 //!
-//! ponytail: one self-signed cert covering routed hostnames, installed into the
-//! Windows Root store so HSTS sites actually render our HTML (not a cert error).
+//! ponytail: self-signed cert covering routed hostnames, installed into the Windows
+//! Root store via certutil so HSTS/HTTPS sites (x.com etc.) render the custom page.
+//! Ceiling: AV may flag Root CA install — upgrade path = EV signing / SignPath later.
 
 use crate::hosts::SINKHOLE_IP;
 use parking_lot::Mutex;
@@ -441,9 +442,10 @@ fn build_tls_config(
         fs::write(&cert_path, &der).map_err(|e| e.to_string())?;
         fs::write(&key_path, &key).map_err(|e| e.to_string())?;
         fs::write(&stamped, &names_blob).map_err(|e| e.to_string())?;
-        install_ca_trust(&cert_path);
         (der, key)
     };
+    // Always (re)trust — reuse path still needs Root if cert was written without install.
+    install_ca_trust(&cert_path);
 
     let key_pair = rcgen::KeyPair::from_pem(&key_pem).map_err(|e| format!("key: {e}"))?;
     let key_der = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key_pair.serialize_der()));

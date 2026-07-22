@@ -1,23 +1,26 @@
 import 'dart:io';
 
+import '../l10n/locale_controller.dart';
+
 /// Windows OpenFileDialog for a local `.html` / `.htm` file.
 ///
 /// ponytail: PowerShell + WinForms instead of a file_picker dependency.
 Future<String?> pickHtmlFile() async {
   if (!Platform.isWindows) return null;
+  final title = s.browseHtml.replaceAll("'", "''");
   final r = await Process.run(
     'powershell',
     [
       '-NoProfile',
       '-STA',
       '-Command',
-      r'''
+      '''
 Add-Type -AssemblyName System.Windows.Forms
-$d = New-Object System.Windows.Forms.OpenFileDialog
-$d.Filter = 'HTML (*.html;*.htm)|*.html;*.htm'
-$d.Title = 'Escolher página de bloqueio'
-if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-  Write-Output $d.FileName
+\$d = New-Object System.Windows.Forms.OpenFileDialog
+\$d.Filter = 'HTML (*.html;*.htm)|*.html;*.htm'
+\$d.Title = '$title'
+if (\$d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+  Write-Output \$d.FileName
 }
 ''',
     ],

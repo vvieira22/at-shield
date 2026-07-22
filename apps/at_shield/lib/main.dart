@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'engine/models.dart';
 import 'engine/shield_cubit.dart';
+import 'l10n/locale_controller.dart';
 import 'ui/splash_gate.dart';
 
 final _navKey = GlobalKey<NavigatorState>();
@@ -29,6 +30,8 @@ class _AtShieldAppState extends State<AtShieldApp> {
   void initState() {
     super.initState();
     _cubit = ShieldCubit()..boot();
+    LocaleController.instance.load();
+    LocaleController.instance.addListener(_onLocaleChanged);
     _windowChannel.setMethodCallHandler(_onWindowCall);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncTrayTip(_cubit.state);
@@ -37,16 +40,19 @@ class _AtShieldAppState extends State<AtShieldApp> {
 
   @override
   void dispose() {
+    LocaleController.instance.removeListener(_onLocaleChanged);
     _windowChannel.setMethodCallHandler(null);
     _cubit.close();
     super.dispose();
   }
 
+  void _onLocaleChanged() => _syncTrayTip(_cubit.state);
+
   Future<void> _syncTrayTip(ShieldState state) async {
     final session = state.session;
     final tip = session == null
-        ? 'A.T. Shield'
-        : 'A.T. Shield · Protegendo (${session.profileName}) · ${session.remainingLabel}';
+        ? s.appName
+        : s.trayProtecting(session.profileName, session.remainingLabel);
     try {
       await _windowChannel.invokeMethod<void>('setTrayTip', tip);
     } catch (_) {}
@@ -64,18 +70,15 @@ class _AtShieldAppState extends State<AtShieldApp> {
         barrierDismissible: false,
         builder: (dCtx) => AlertDialog(
           backgroundColor: AtShieldColors.surface,
-          title: const Text('Fechar o A.T. Shield?'),
-          content: const Text(
-            'Tem uma sessão de proteção ativa. '
-            'Se fechar agora, o bloqueio para e os sites voltam a abrir.',
-          ),
+          title: Text(s.closeAppTitle),
+          content: Text(s.closeAppContent),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dCtx, false),
-              child: const Text('Cancelar'),
+              child: Text(s.cancel),
             ),
             AtRedButton(
-              label: 'Fechar e parar',
+              label: s.closeAndStop,
               dense: true,
               onPressed: () => Navigator.pop(dCtx, true),
             ),
@@ -99,9 +102,11 @@ class _AtShieldAppState extends State<AtShieldApp> {
             (prev.session == null) != (next.session == null) ||
             prev.session?.remainingSecs != next.session?.remainingSecs,
         listener: (context, state) => _syncTrayTip(state),
+        // Locale rebuilds live under HomeShell — keep MaterialApp stable
+        // so splash / navigator aren't remounted on language change.
         child: MaterialApp(
           navigatorKey: _navKey,
-          title: 'A.T. Shield',
+          title: s.appName,
           debugShowCheckedModeBanner: false,
           theme: AtShieldTheme.dark(),
           home: const SplashGate(),

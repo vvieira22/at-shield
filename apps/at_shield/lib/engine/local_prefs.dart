@@ -75,6 +75,13 @@ class LocalPrefs {
     await _flush();
   }
 
+  String get localeCode => (_data['locale'] as String?) == 'en' ? 'en' : 'pt';
+
+  Future<void> setLocale(String code) async {
+    _data['locale'] = code == 'en' ? 'en' : 'pt';
+    await _flush();
+  }
+
   Future<void> _flush() async {
     await _file.writeAsString(const JsonEncoder.withIndent('  ').convert(_data));
   }

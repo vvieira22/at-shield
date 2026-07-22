@@ -1,7 +1,7 @@
 // A.T. Shield comfort page — petals + leaves + fireflies
 document.documentElement.dataset.shield = "1";
 
-const QUOTES = [
+const QUOTES_PT = [
   "Link the fire. O resto pode esperar.",
   "Bonfire lit. Descanse, ashen one.",
   "Você morreu. Levante. De novo.",
@@ -25,7 +25,126 @@ const QUOTES = [
   "O feed não tem main quest.",
   "Ctrl+Z na ansiedade. Enter no agora.",
   "It's dangerous to go alone — fica.",
+  "A chama ainda arde. Não a troque por um prazer que desaparece em minutos.",
+  "Toda grande jornada exige pequenas renúncias. Esta é apenas mais uma delas.",
+  "O guerreiro mais forte não vence monstros. Ele vence os próprios impulsos.",
+  "Continue caminhando. Seu propósito vale mais do que esta distração.",
+  "Há paz em seguir em frente. Há arrependimento em voltar atrás.",
+  "Nem toda batalha deixa cicatrizes. Algumas deixam caráter.",
+  "A fogueira existe para lembrar que sempre é possível recomeçar.",
+  "Você não chegou até aqui para abandonar sua própria missão.",
+  "A tentação dura um instante. A disciplina constrói uma vida.",
+  "A escuridão sempre oferece atalhos. A luz recompensa quem continua.",
+  "Hoje você escolhe quem será amanhã.",
+  "Sua história merece um capítulo melhor do que este desvio.",
+  "O caminho é silencioso, mas nunca solitário. Continue.",
+  "A força nasce exatamente nos momentos em que seria mais fácil desistir.",
+  "Respire. A vontade passa. Seu propósito permanece.",
+  "Você é maior do que este impulso. Sempre foi.",
+  "Não apague a chama por causa de um instante de fraqueza.",
+  "Toda vitória invisível fortalece a alma.",
+  "Algumas batalhas ninguém verá. Ainda assim, elas definem quem você é.",
+  "Permaneça firme. O amanhecer sempre chega para quem continua andando.",
+  "Mesmo cansado, escolha permanecer perto da luz.",
+  "A chama não julga suas quedas. Apenas espera que você continue.",
+  "A chama ainda arde. Respire por um momento. O impulso vai passar, mas a pessoa que você está se tornando permanecerá. Continue sua jornada.",
+  "As feridas não definem quem você é. As escolhas de hoje, sim.",
+  "Você não está preso. Está apenas aprendendo a caminhar.",
+  "O mundo ainda guarda momentos que valem muito mais do que este impulso.",
 ];
+
+const QUOTES_EN = [
+  "Link the fire. The rest can wait.",
+  "Bonfire lit. Rest, ashen one.",
+  "You died. Get up. Again.",
+  "Don't you dare go hollow.",
+  "Haste is the real boss.",
+  "Praise the Sun — and breathe deep.",
+  "Token of friendship: stay here a while.",
+  "Don't run. Stay. Just for now.",
+  "The fate of destruction is also the joy of rebirth.",
+  "You're not alone in this cockpit.",
+  "Get in the robot — but breathe first.",
+  "I mustn't run away. Not from the silence.",
+  "A moment without an AT Field counts too.",
+  "Achievement unlocked: chose to stay.",
+  "git commit -m \"pause\"",
+  "Loading… character development.",
+  "Press start to continue — later.",
+  "No side quest is too urgent.",
+  "Mana regenerating. Please wait.",
+  "Save point reached.",
+  "The feed has no main quest.",
+  "Ctrl+Z the anxiety. Enter the now.",
+  "It's dangerous to go alone — stay.",
+  "The flame still burns. Don't trade it for a pleasure that fades in minutes.",
+  "Every great journey asks for small renunciations. This is just one more.",
+  "The strongest warrior doesn't defeat monsters. He defeats his own impulses.",
+  "Keep walking. Your purpose is worth more than this distraction.",
+  "There is peace in moving forward. There is regret in turning back.",
+  "Not every battle leaves scars. Some leave character.",
+  "The bonfire exists to remind you that it's always possible to begin again.",
+  "You didn't come this far to abandon your own mission.",
+  "Temptation lasts a moment. Discipline builds a life.",
+  "Darkness always offers shortcuts. Light rewards those who keep going.",
+  "Today you choose who you will be tomorrow.",
+  "Your story deserves a better chapter than this detour.",
+  "The path is quiet, but never lonely. Keep going.",
+  "Strength is born exactly in the moments when it would be easiest to quit.",
+  "Breathe. The urge passes. Your purpose remains.",
+  "You are greater than this impulse. You always have been.",
+  "Don't extinguish the flame because of a moment of weakness.",
+  "Every invisible victory strengthens the soul.",
+  "Some battles no one will see. Still, they define who you are.",
+  "Stand firm. Dawn always comes for those who keep walking.",
+  "Even when tired, choose to stay near the light.",
+  "The flame does not judge your falls. It only waits for you to continue.",
+  "The flame still burns. Breathe for a moment. The impulse will pass, but the person you are becoming will remain. Continue your journey.",
+  "Wounds do not define who you are. Today's choices do.",
+  "You are not trapped. You are only learning to walk.",
+  "The world still holds moments worth far more than this impulse.",
+];
+
+let _lang = "pt";
+
+async function applyLang(lang) {
+  _lang = lang === "en" ? "en" : "pt";
+  document.documentElement.lang = _lang === "en" ? "en" : "pt-BR";
+  for (const el of document.querySelectorAll("[data-pt][data-en]")) {
+    const text = el.getAttribute(`data-${_lang}`);
+    if (text) el.textContent = text;
+  }
+  renderCredits();
+}
+
+async function loadLang() {
+  const urls = ["/lang.json", "lang.json"];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data && data.lang) {
+        await applyLang(data.lang);
+        return;
+      }
+    } catch (_) {}
+  }
+  await applyLang("pt");
+}
+
+function quotesForLang() {
+  return _lang === "en" ? QUOTES_EN : QUOTES_PT;
+}
+
+function pick(n) {
+  const bag = quotesForLang().slice();
+  for (let i = bag.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [bag[i], bag[j]] = [bag[j], bag[i]];
+  }
+  return bag.slice(0, n);
+}
 
 // soft garden palette — sakura / autumn / dusk
 const PETAL_COLORS = [
@@ -53,15 +172,6 @@ const LEAF_COLORS = [
   ["#9ccc65", "#33691e"],
   ["#ffd54f", "#ff8f00"],
 ];
-
-function pick(n) {
-  const bag = QUOTES.slice();
-  for (let i = bag.length - 1; i > 0; i--) {
-    const j = (Math.random() * (i + 1)) | 0;
-    [bag[i], bag[j]] = [bag[j], bag[i]];
-  }
-  return bag.slice(0, n);
-}
 
 function renderCredits() {
   const track = document.querySelector(".credits-track");
@@ -317,4 +427,6 @@ function startFx() {
 }
 
 renderCredits();
+document.querySelector(".credits-track")?.addEventListener("animationiteration", renderCredits);
 startFx();
+loadLang();

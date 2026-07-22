@@ -1,11 +1,19 @@
 import 'package:flutter/foundation.dart';
 
+import '../l10n/locale_controller.dart';
+
 class Profile {
   Profile({required this.id, required this.name, this.sortOrder = 0});
 
   final String id;
   final String name;
   final int sortOrder;
+
+  /// Built-in defaults — never deletable from the UI / engine.
+  bool get isBuiltin =>
+      id == 'profile-estudo' ||
+      id == 'profile-detox-total' ||
+      id == 'profile-adulto';
 
   factory Profile.fromJson(Map<String, dynamic> j) => Profile(
         id: j['id'] as String,
@@ -116,8 +124,8 @@ class FocusSession {
   factory FocusSession.fromJson(Map<String, dynamic> j) {
     final s = j['state'] as String? ?? 'idle';
     return FocusSession(
-      profileId: j['profile_id'] as String,
-      profileName: j['profile_name'] as String,
+      profileId: j['profile_id'] as String? ?? '',
+      profileName: j['profile_name'] as String? ?? '',
       state: s == 'running' ? SessionState.running : SessionState.idle,
       remainingSecs: (j['remaining_secs'] as num?)?.toInt() ?? 0,
       durationSecs: (j['duration_secs'] as num?)?.toInt() ?? 0,
@@ -177,7 +185,7 @@ class SessionRecord {
             .toList()
         : <DomainHit>[];
     return SessionRecord(
-      id: j['id'] as String,
+      id: j['id'] as String? ?? '',
       profileId: j['profile_id'] as String? ?? '',
       profileName: j['profile_name'] as String? ?? '',
       startedAt: (j['started_at'] as num?)?.toInt() ?? 0,
@@ -209,7 +217,7 @@ class SessionRecord {
   }
 
   String get reasonLabel =>
-      endedReason == 'timer' ? 'Tempo esgotado' : 'Encerrada';
+      endedReason == 'timer' ? s.reasonTimer : s.reasonManual;
 }
 
 @immutable
