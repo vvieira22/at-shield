@@ -2,6 +2,7 @@ import 'package:at_shield_ui/at_shield_ui.dart';
 import 'package:flutter/material.dart';
 
 import '../engine/models.dart';
+import '../l10n/locale_controller.dart';
 
 Future<void> showSessionSummaryDialog(
   BuildContext context,
@@ -12,7 +13,7 @@ Future<void> showSessionSummaryDialog(
     barrierDismissible: true,
     builder: (ctx) => AlertDialog(
       backgroundColor: AtShieldColors.surface,
-      title: const Text('Sessão encerrada'),
+      title: Text(s.sessionEnded),
       content: SizedBox(
         width: 420,
         child: SessionSummaryBody(record: record),
@@ -20,7 +21,7 @@ Future<void> showSessionSummaryDialog(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('Fechar'),
+          child: Text(s.close),
         ),
       ],
     ),
@@ -39,7 +40,7 @@ class SessionSummaryBody extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Proteção · ${record.profileName}',
+          s.protectionProfile(record.profileName),
           style: const TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: 15,
@@ -57,9 +58,7 @@ class SessionSummaryBody extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Text(
-          record.totalAttempts == 0
-              ? 'Nenhuma tentativa de acesso aos sites bloqueados.'
-              : '${record.totalAttempts} tentativa${record.totalAttempts == 1 ? '' : 's'} de entrar em sites bloqueados:',
+          s.attemptsIntro(record.totalAttempts),
           style: const TextStyle(fontSize: 13),
         ),
         if (record.attempts.isNotEmpty) ...[

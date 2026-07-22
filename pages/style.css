@@ -103,7 +103,7 @@ h1 {
   flex-direction: column;
   align-items: center;
   gap: 1.25rem;
-  animation: credits-rise 26s linear infinite;
+  animation: credits-rise 34s linear infinite;
   will-change: transform;
 }
 

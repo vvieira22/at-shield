@@ -6,6 +6,7 @@ import '../engine/domain_util.dart';
 import '../engine/models.dart';
 import '../engine/pick_html.dart';
 import '../engine/shield_cubit.dart';
+import '../l10n/locale_controller.dart';
 
 class SitesPanel extends StatelessWidget {
   const SitesPanel({super.key});
@@ -30,7 +31,7 @@ class SitesPanel extends StatelessWidget {
                     Row(
                       children: [
                         Text(
-                          'Sites bloqueados (${sites.length})',
+                          s.sitesBlocked(sites.length),
                           style: Theme.of(context)
                               .textTheme
                               .headlineMedium
@@ -38,7 +39,7 @@ class SitesPanel extends StatelessWidget {
                         ),
                         const Spacer(),
                         AtRedButton(
-                          label: 'Adicionar site',
+                          label: s.addSite,
                           icon: Icons.add,
                           dense: true,
                           onPressed: locked ? null : () => _addSite(context),
@@ -47,8 +48,8 @@ class SitesPanel extends StatelessWidget {
                         SizedBox(
                           width: 220,
                           child: TextField(
-                            decoration: const InputDecoration(
-                              hintText: 'Buscar site...',
+                            decoration: InputDecoration(
+                              hintText: s.searchSite,
                               prefixIcon: Icon(Icons.search, size: 18),
                               isDense: true,
                             ),
@@ -57,17 +58,13 @@ class SitesPanel extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         IconButton(
-                          tooltip: locked
-                              ? 'Encerrar sessão pra editar'
-                              : 'Ativar todos',
+                          tooltip: locked ? s.endSessionToEdit : s.enableAll,
                           onPressed:
                               locked ? null : () => cubit.toggleAll(true),
                           icon: const Icon(Icons.done_all, size: 18),
                         ),
                         IconButton(
-                          tooltip: locked
-                              ? 'Encerrar sessão pra editar'
-                              : 'Desativar todos',
+                          tooltip: locked ? s.endSessionToEdit : s.disableAll,
                           onPressed:
                               locked ? null : () => cubit.toggleAll(false),
                           icon: const Icon(Icons.remove_done, size: 18),
@@ -77,7 +74,7 @@ class SitesPanel extends StatelessWidget {
                     if (locked) ...[
                       const SizedBox(height: 8),
                       Text(
-                        'Sessão ativa — encerre pra marcar/editar sites',
+                        s.sessionActiveEditSites,
                         style: TextStyle(
                           color: AtShieldColors.muted,
                           fontSize: 12,
@@ -89,9 +86,9 @@ class SitesPanel extends StatelessWidget {
                     const SizedBox(height: 4),
                     Expanded(
                       child: sites.isEmpty && !state.connected
-                          ? const Center(
+                          ? Center(
                               child: Text(
-                                'Conectando ao serviço…',
+                                s.connecting,
                                 style: TextStyle(color: AtShieldColors.muted),
                               ),
                             )
@@ -140,23 +137,19 @@ class SitesPanel extends StatelessWidget {
     final cubit = context.read<ShieldCubit>();
     if (cubit.state.editingLocked) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Encerrar sessão pra adicionar sites'),
-        ),
+        SnackBar(content: Text(s.endSessionToAddSites)),
       );
       return;
     }
     if (!cubit.state.connected) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Serviço offline — não dá pra adicionar site'),
-        ),
+        SnackBar(content: Text(s.serviceOfflineAddSite)),
       );
       return;
     }
     if (cubit.state.activeProfileId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nenhum perfil ativo')),
+        SnackBar(content: Text(s.noActiveProfile)),
       );
       return;
     }
@@ -165,22 +158,20 @@ class SitesPanel extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AtShieldColors.surface,
-        title: const Text('Adicionar site'),
+        title: Text(s.addSiteTitle),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'x.com  ou  https://x.com/',
-          ),
+          decoration: InputDecoration(hintText: s.domainHint),
           onSubmitted: (_) => Navigator.pop(ctx, true),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: Text(s.cancel),
           ),
           AtRedButton(
-            label: 'Adicionar',
+            label: s.add,
             dense: true,
             onPressed: () => Navigator.pop(ctx, true),
           ),
@@ -193,7 +184,7 @@ class SitesPanel extends StatelessWidget {
     if (!context.mounted) return;
     if (domain.isEmpty || !domain.contains('.')) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Domínio inválido — use x.com')),
+        SnackBar(content: Text(s.invalidDomain)),
       );
       return;
     }
@@ -210,8 +201,8 @@ class SitesPanel extends StatelessWidget {
         SnackBar(
           content: Text(
             existing.enabled
-                ? '$domain já está na lista — selecionei ele'
-                : '$domain já estava na lista — reativei e selecionei',
+                ? s.siteAlreadyInList(domain)
+                : s.siteReactivatedInList(domain),
           ),
           backgroundColor: AtShieldColors.surface2,
         ),
@@ -229,7 +220,7 @@ class SitesPanel extends StatelessWidget {
     final err = cubit.state.error;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(err ?? 'Site $domain adicionado'),
+        content: Text(err ?? s.siteAdded(domain)),
         backgroundColor:
             err == null ? AtShieldColors.surface2 : AtShieldColors.accentDim,
       ),
@@ -241,19 +232,19 @@ class SitesPanel extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AtShieldColors.surface,
-        title: const Text('Excluir site'),
+        title: Text(s.deleteSite),
         content: Text(
           site.domain == 'x.com' || site.domain == 'twitter.com'
-              ? 'Remover ${site.domain} e o alias twitter/x da lista?'
-              : 'Remover ${site.domain} da lista de bloqueio?',
+              ? s.deleteSiteTwitterMsg(site.domain)
+              : s.deleteSiteConfirmMsg(site.domain),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: Text(s.cancel),
           ),
           AtRedButton(
-            label: 'Excluir',
+            label: s.delete,
             dense: true,
             onPressed: () => Navigator.pop(ctx, true),
           ),
@@ -264,7 +255,7 @@ class SitesPanel extends StatelessWidget {
       await context.read<ShieldCubit>().deleteSite(site.id);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${site.domain} removido')),
+          SnackBar(content: Text(s.siteRemoved(site.domain))),
         );
       }
     }
@@ -274,14 +265,14 @@ class SitesPanel extends StatelessWidget {
 class _HeaderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          Expanded(flex: 3, child: Text('SITE / DOMÍNIO', style: _h)),
-          Expanded(flex: 2, child: Text('REDIRECIONAR PARA', style: _h)),
-          Expanded(child: Text('PÁGINA', style: _h)),
-          SizedBox(width: 72, child: Text('STATUS', style: _h)),
+          Expanded(flex: 3, child: Text(s.headerSite, style: _h)),
+          Expanded(flex: 2, child: Text(s.headerRedirect, style: _h)),
+          Expanded(child: Text(s.headerPage, style: _h)),
+          SizedBox(width: 72, child: Text(s.headerStatus, style: _h)),
           SizedBox(width: 40),
         ],
       ),
@@ -371,8 +362,8 @@ class _SiteRow extends StatelessWidget {
                 flex: 2,
                 child: Text(
                   site.redirect == RedirectTarget.customPage
-                      ? 'Página personalizada'
-                      : 'Bloquear',
+                      ? s.customPage
+                      : s.block,
                   style: const TextStyle(color: AtShieldColors.muted),
                 ),
               ),
@@ -407,11 +398,11 @@ class _SiteRow extends StatelessWidget {
                   itemBuilder: (_) => [
                     PopupMenuItem(
                       value: 'toggle',
-                      child: Text(site.enabled ? 'Desativar' : 'Ativar'),
+                      child: Text(site.enabled ? s.disable : s.enable),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'delete',
-                      child: Text('Excluir'),
+                      child: Text(s.delete),
                     ),
                   ],
                 ),
@@ -489,19 +480,19 @@ class _SitePropertiesState extends State<SiteProperties> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AtShieldColors.surface,
-        title: const Text('Excluir site'),
+        title: Text(s.deleteSite),
         content: Text(
           site.domain == 'x.com' || site.domain == 'twitter.com'
-              ? 'Remover ${site.domain} e o alias twitter/x da lista?'
-              : 'Remover ${site.domain} da lista de bloqueio?',
+              ? s.deleteSiteTwitterMsg(site.domain)
+              : s.deleteSiteConfirmMsg(site.domain),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: Text(s.cancel),
           ),
           AtRedButton(
-            label: 'Excluir',
+            label: s.delete,
             dense: true,
             onPressed: () => Navigator.pop(ctx, true),
           ),
@@ -518,15 +509,15 @@ class _SitePropertiesState extends State<SiteProperties> {
     final page = _page.text.trim();
     if (page.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Informe um arquivo .html')),
+        SnackBar(content: Text(s.specifyHtmlFile)),
       );
       return;
     }
-    final s = widget.site;
+    final site = widget.site;
     context.read<ShieldCubit>().saveSite(
           SiteRule(
-            id: s.id,
-            profileId: s.profileId,
+            id: site.id,
+            profileId: site.profileId,
             domain: _domain.text.trim().toLowerCase(),
             includeSubdomains: _subdomains,
             redirect: _redirect,
@@ -582,10 +573,10 @@ class _SitePropertiesState extends State<SiteProperties> {
               ),
               const SizedBox(height: 12),
               if (locked)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 10),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
                   child: Text(
-                    'Sessão ativa — só leitura. Encerrar pra editar.',
+                    s.sitePropertiesReadonly,
                     style: TextStyle(
                       color: AtShieldColors.muted,
                       fontSize: 12,
@@ -629,7 +620,7 @@ class _SitePropertiesState extends State<SiteProperties> {
                     ),
                   ),
                   Text(
-                    _enabled ? 'Ativo' : 'Inativo',
+                    _enabled ? s.active : s.inactive,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -646,7 +637,7 @@ class _SitePropertiesState extends State<SiteProperties> {
                         : (v) => setState(() => _enabled = v),
                   ),
                   IconButton(
-                    tooltip: 'Fechar',
+                    tooltip: s.close,
                     onPressed: () =>
                         context.read<ShieldCubit>().clearSiteSelection(),
                     icon: const Icon(Icons.close, size: 20),
@@ -669,7 +660,7 @@ class _SitePropertiesState extends State<SiteProperties> {
                       children: [
                         Expanded(
                           child: _field(
-                            'Domínio',
+                            s.domain,
                             TextField(
                               controller: _domain,
                               enabled: !locked,
@@ -680,20 +671,20 @@ class _SitePropertiesState extends State<SiteProperties> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: _field(
-                            'Subdomínios',
+                            s.subdomains,
                             DropdownButtonFormField<bool>(
                               initialValue: _subdomains,
                               isExpanded: true,
                               dropdownColor: AtShieldColors.surface,
                               decoration: _input,
-                              items: const [
+                              items: [
                                 DropdownMenuItem(
                                   value: true,
-                                  child: Text('Sim'),
+                                  child: Text(s.yes),
                                 ),
                                 DropdownMenuItem(
                                   value: false,
-                                  child: Text('Não'),
+                                  child: Text(s.no),
                                 ),
                               ],
                               onChanged: locked
@@ -707,20 +698,20 @@ class _SitePropertiesState extends State<SiteProperties> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: _field(
-                            'Redirecionar',
+                            s.redirect,
                             DropdownButtonFormField<RedirectTarget>(
                               initialValue: _redirect,
                               isExpanded: true,
                               dropdownColor: AtShieldColors.surface,
                               decoration: _input,
-                              items: const [
+                              items: [
                                 DropdownMenuItem(
                                   value: RedirectTarget.customPage,
-                                  child: Text('Página'),
+                                  child: Text(s.page),
                                 ),
                                 DropdownMenuItem(
                                   value: RedirectTarget.block,
-                                  child: Text('Bloquear'),
+                                  child: Text(s.block),
                                 ),
                               ],
                               onChanged: locked
@@ -736,7 +727,7 @@ class _SitePropertiesState extends State<SiteProperties> {
                         Expanded(
                           flex: 2,
                           child: _field(
-                            'Página de bloqueio',
+                            s.blockPage,
                             Row(
                               children: [
                                 Expanded(
@@ -750,7 +741,7 @@ class _SitePropertiesState extends State<SiteProperties> {
                                 ),
                                 const SizedBox(width: 6),
                                 _iconAction(
-                                  tooltip: 'Procurar HTML…',
+                                  tooltip: s.browseHtml,
                                   icon: Icons.folder_open_outlined,
                                   onPressed: locked
                                       ? null
@@ -763,7 +754,7 @@ class _SitePropertiesState extends State<SiteProperties> {
                                 ),
                                 const SizedBox(width: 4),
                                 _iconAction(
-                                  tooltip: 'Preview',
+                                  tooltip: s.preview,
                                   icon: Icons.open_in_new,
                                   onPressed: () =>
                                       openPagePreview(_page.text),
@@ -777,8 +768,8 @@ class _SitePropertiesState extends State<SiteProperties> {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        const Text(
-                          'PROTOCOLOS',
+                        Text(
+                          s.protocols,
                           style: TextStyle(
                             fontSize: 10,
                             letterSpacing: 0.08,
@@ -833,7 +824,7 @@ class _SitePropertiesState extends State<SiteProperties> {
                   TextButton.icon(
                     onPressed: locked ? null : _confirmDelete,
                     icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text('Excluir'),
+                    label: Text(s.delete),
                     style: TextButton.styleFrom(
                       foregroundColor: AtShieldColors.muted,
                     ),
@@ -842,11 +833,11 @@ class _SitePropertiesState extends State<SiteProperties> {
                   TextButton(
                     onPressed: () =>
                         context.read<ShieldCubit>().clearSiteSelection(),
-                    child: const Text('Cancelar'),
+                    child: Text(s.cancel),
                   ),
                   const SizedBox(width: 8),
                   AtRedButton(
-                    label: 'Salvar alterações',
+                    label: s.saveChanges,
                     icon: Icons.check,
                     dense: true,
                     onPressed: locked ? null : _save,

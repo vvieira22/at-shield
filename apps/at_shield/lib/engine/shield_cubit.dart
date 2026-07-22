@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../l10n/locale_controller.dart';
 import 'local_prefs.dart';
 import 'models.dart';
 import 'shield_rpc.dart';
@@ -26,8 +27,7 @@ class ShieldCubit extends Cubit<ShieldState> {
     if (!ok) {
       emit(state.copyWith(
         connected: false,
-        error:
-            'Serviço offline — rode scripts\\dev-windows.bat (deixe a janela preta aberta)',
+        error: s.serviceOfflineLong,
       ));
       _reconnect = Timer.periodic(const Duration(seconds: 2), (_) async {
         if (isClosed || state.connected) return;
@@ -80,7 +80,7 @@ class ShieldCubit extends Cubit<ShieldState> {
       }
       final profileId = state.activeProfileId ??
           _firstProfileId(profiles) ??
-          'profile-trabalho';
+          'profile-estudo';
       final sites = await _rpc.call({
         'cmd': 'list_sites',
         'profile_id': profileId,
@@ -122,14 +122,14 @@ class ShieldCubit extends Cubit<ShieldState> {
     } catch (e) {
       emit(state.copyWith(
         connected: false,
-        error: 'Falha ao falar com o serviço',
+        error: s.failTalkService,
       ));
     }
   }
 
   Future<void> selectProfile(String id) async {
     if (state.editingLocked) {
-      emit(state.copyWith(error: 'Encerrar sessão pra trocar de perfil'));
+      emit(state.copyWith(error: s.endSessionToSwitchProfile));
       return;
     }
     emit(state.copyWith(activeProfileId: id));
@@ -156,7 +156,7 @@ class ShieldCubit extends Cubit<ShieldState> {
 
   Future<void> saveProfile(Profile profile) async {
     if (state.editingLocked) {
-      emit(state.copyWith(error: 'Encerrar sessão pra editar'));
+      emit(state.copyWith(error: s.endSessionToEdit));
       return;
     }
     final resp = await _rpc.call({
@@ -172,7 +172,7 @@ class ShieldCubit extends Cubit<ShieldState> {
 
   Future<void> deleteProfile(String id) async {
     if (state.editingLocked) {
-      emit(state.copyWith(error: 'Encerrar sessão pra editar'));
+      emit(state.copyWith(error: s.endSessionToEdit));
       return;
     }
     final resp = await _rpc.call({'cmd': 'delete_profile', 'id': id});
@@ -188,7 +188,7 @@ class ShieldCubit extends Cubit<ShieldState> {
 
   Future<void> duplicateProfile(Profile source) async {
     if (state.editingLocked) {
-      emit(state.copyWith(error: 'Encerrar sessão pra editar'));
+      emit(state.copyWith(error: s.endSessionToEdit));
       return;
     }
     final sitesResp = await _rpc.call({
@@ -199,7 +199,7 @@ class ShieldCubit extends Cubit<ShieldState> {
     final newId = 'profile-${DateTime.now().millisecondsSinceEpoch}';
     final copy = Profile(
       id: newId,
-      name: '${source.name} (cópia)',
+      name: '${source.name}${s.copySuffix}',
       sortOrder: state.profiles.length,
     );
     final up = await _rpc.call({
@@ -228,7 +228,7 @@ class ShieldCubit extends Cubit<ShieldState> {
 
   Future<void> setProfileSitesEnabled(String profileId, bool enabled) async {
     if (state.editingLocked) {
-      emit(state.copyWith(error: 'Encerrar sessão pra editar sites'));
+      emit(state.copyWith(error: s.endSessionToEditSites));
       return;
     }
     final wasActive = state.activeProfileId == profileId;
@@ -261,11 +261,11 @@ class ShieldCubit extends Cubit<ShieldState> {
 
   Future<void> toggleSite(String id, bool enabled) async {
     if (!state.connected) {
-      emit(state.copyWith(error: 'Serviço offline'));
+      emit(state.copyWith(error: s.serviceOffline));
       return;
     }
     if (state.editingLocked) {
-      emit(state.copyWith(error: 'Encerrar sessão pra editar sites'));
+      emit(state.copyWith(error: s.endSessionToEditSites));
       return;
     }
     final resp = await _rpc.call({
@@ -282,11 +282,11 @@ class ShieldCubit extends Cubit<ShieldState> {
 
   Future<void> toggleAll(bool enabled) async {
     if (!state.connected) {
-      emit(state.copyWith(error: 'Serviço offline'));
+      emit(state.copyWith(error: s.serviceOffline));
       return;
     }
     if (state.editingLocked) {
-      emit(state.copyWith(error: 'Encerrar sessão pra editar sites'));
+      emit(state.copyWith(error: s.endSessionToEditSites));
       return;
     }
     final ids = state.sites.map((s) => s.id).toList();
@@ -304,7 +304,7 @@ class ShieldCubit extends Cubit<ShieldState> {
 
   Future<void> saveSite(SiteRule site) async {
     if (state.editingLocked) {
-      emit(state.copyWith(error: 'Encerrar sessão pra editar sites'));
+      emit(state.copyWith(error: s.endSessionToEditSites));
       return;
     }
     final resp = await _rpc.call({'cmd': 'upsert_site', 'site': site.toJson()});
@@ -332,7 +332,7 @@ class ShieldCubit extends Cubit<ShieldState> {
 
   Future<void> deleteSite(String id) async {
     if (state.editingLocked) {
-      emit(state.copyWith(error: 'Encerrar sessão pra editar sites'));
+      emit(state.copyWith(error: s.endSessionToEditSites));
       return;
     }
     final resp = await _rpc.call({'cmd': 'delete_site', 'id': id});
@@ -346,7 +346,7 @@ class ShieldCubit extends Cubit<ShieldState> {
 
   Future<void> setSessionDurationMins(int mins) async {
     if (state.editingLocked) {
-      emit(state.copyWith(error: 'Encerrar sessão pra mudar a duração'));
+      emit(state.copyWith(error: s.endSessionToChangeDuration));
       return;
     }
     final v = mins.clamp(1, 24 * 60);
@@ -360,7 +360,7 @@ class ShieldCubit extends Cubit<ShieldState> {
     int? durationSecs,
   }) async {
     if (state.editingLocked) {
-      emit(state.copyWith(error: 'Já tem sessão ativa — encerre antes'));
+      emit(state.copyWith(error: s.alreadyHasSession));
       return;
     }
     final pid = profileId ?? state.activeProfileId;
@@ -381,8 +381,7 @@ class ShieldCubit extends Cubit<ShieldState> {
     }
     if (!state.networkArmed) {
       emit(state.copyWith(
-        error:
-            'Sessão ok, mas o bloqueio de rede precisa de Admin — rode o serviço como Administrador',
+        error: s.sessionOkNeedsAdmin,
       ));
     }
   }
@@ -496,8 +495,26 @@ class ShieldCubit extends Cubit<ShieldState> {
     return d is Map<String, dynamic> ? d : null;
   }
 
-  static String _err(Map<String, dynamic> r) =>
-      _data(r)?['message'] as String? ?? 'erro';
+  static String _err(Map<String, dynamic> r) {
+    final msg = _data(r)?['message'] as String? ?? s.error;
+    if (LocaleController.instance.lang != AppLang.en) return msg;
+    // ponytail: service speaks PT — map known msgs; new ones stay as-is until translated at source
+    const map = {
+      'encerre a sessão pra editar sites': 'End session to edit sites',
+      'precisa de pelo menos um perfil': 'Need at least one profile',
+      'bloqueio só via sessão — use iniciar sessão':
+          'Blocking only via session — start a session',
+      'já tem sessão ativa — encerre antes':
+          'Session already active — end first',
+    };
+    for (final e in map.entries) {
+      if (msg == e.key) return e.value;
+      if (msg.contains(e.key)) return msg.replaceFirst(e.key, e.value);
+    }
+    return msg
+        .replaceAll('precisa admin', 'needs Admin')
+        .replaceAll('precisa Admin', 'needs Admin');
+  }
 
   static String? _firstProfileId(Map<String, dynamic> r) {
     final list = _parseProfiles(r);
@@ -520,6 +537,8 @@ class ShieldCubit extends Cubit<ShieldState> {
   }
 
   static FocusSession? _parseSession(Map<String, dynamic> r) {
+    // Don't treat error/pong/etc maps as a session (no profile_id → crash).
+    if (_ok(r) != 'session') return null;
     final d = r['data'];
     if (d is Map<String, dynamic>) return FocusSession.fromJson(d);
     return null;

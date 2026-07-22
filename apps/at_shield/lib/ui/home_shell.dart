@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../engine/local_prefs.dart';
 import '../engine/models.dart';
 import '../engine/shield_cubit.dart';
+import '../l10n/locale_controller.dart';
 import 'config_panel.dart';
 import 'history_panel.dart';
 import 'pages_panel.dart';
@@ -46,72 +47,79 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    if (_locked && _prefs?.pin != null) {
-      return PinLockGate(
-        pin: _prefs!.pin!,
-        onUnlocked: () => setState(() => _locked = false),
-        onPinCleared: () async {
-          final prefs = await LocalPrefs.open();
-          if (!mounted) return;
-          setState(() {
-            _prefs = prefs;
-            _locked = false;
-          });
-        },
-      );
-    }
+    return ListenableBuilder(
+      listenable: LocaleController.instance,
+      builder: (context, _) {
+        if (_locked && _prefs?.pin != null) {
+          return PinLockGate(
+            pin: _prefs!.pin!,
+            onUnlocked: () => setState(() => _locked = false),
+            onPinCleared: () async {
+              final prefs = await LocalPrefs.open();
+              if (!mounted) return;
+              setState(() {
+                _prefs = prefs;
+                _locked = false;
+              });
+            },
+          );
+        }
 
-    return Scaffold(
-      body: BlocListener<ShieldCubit, ShieldState>(
-        listenWhen: (prev, next) =>
-            next.lastSummary != null &&
-            next.lastSummary?.id != prev.lastSummary?.id,
-        listener: (context, state) {
-          final summary = state.lastSummary;
-          if (summary == null) return;
-          showSessionSummaryDialog(context, summary).then((_) {
-            if (context.mounted) {
-              context.read<ShieldCubit>().clearLastSummary();
-            }
-          });
-        },
-        child: Row(
-          children: [
-            AppSidebar(
-              section: _section,
-              onSelect: (id) => setState(() => _section = id),
-            ),
-            Expanded(
-              child: Column(
-                children: [
-                  const SessionHeader(),
-                  BlocBuilder<ShieldCubit, ShieldState>(
-                    builder: (context, state) {
-                      if (state.error == null) return const SizedBox.shrink();
-                      return Material(
-                        color: AtShieldColors.accentDim,
-                        child: ListTile(
-                          dense: true,
-                          title: Text(
-                            state.error!,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                          trailing: TextButton(
-                            onPressed: () =>
-                                context.read<ShieldCubit>().boot(),
-                            child: const Text('Reconectar'),
-                          ),
-                        ),
-                      );
-                    },
+        return Scaffold(
+          body: BlocListener<ShieldCubit, ShieldState>(
+            listenWhen: (prev, next) =>
+                next.lastSummary != null &&
+                next.lastSummary?.id != prev.lastSummary?.id,
+            listener: (context, state) {
+              final summary = state.lastSummary;
+              if (summary == null) return;
+              showSessionSummaryDialog(context, summary).then((_) {
+                if (context.mounted) {
+                  context.read<ShieldCubit>().clearLastSummary();
+                }
+              });
+            },
+            child: Row(
+              children: [
+                AppSidebar(
+                  section: _section,
+                  onSelect: (id) => setState(() => _section = id),
+                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      const SessionHeader(),
+                      BlocBuilder<ShieldCubit, ShieldState>(
+                        builder: (context, state) {
+                          if (state.error == null) {
+                            return const SizedBox.shrink();
+                          }
+                          return Material(
+                            color: AtShieldColors.accentDim,
+                            child: ListTile(
+                              dense: true,
+                              title: Text(
+                                state.error!,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              trailing: TextButton(
+                                onPressed: () =>
+                                    context.read<ShieldCubit>().boot(),
+                                child: Text(s.reconnect),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      Expanded(child: _body()),
+                    ],
                   ),
-                  Expanded(child: _body()),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

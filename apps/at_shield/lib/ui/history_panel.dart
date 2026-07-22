@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../engine/models.dart';
 import '../engine/shield_cubit.dart';
+import '../l10n/locale_controller.dart';
 import 'section_frame.dart';
 import 'session_summary_dialog.dart';
 
@@ -30,12 +31,11 @@ class _HistoryPanelState extends State<HistoryPanel> {
       builder: (context, state) {
         final byDay = _groupByDay(state.sessionHistory);
         return SectionFrame(
-          title: 'Histórico',
-          subtitle:
-              'Últimos 30 dias — depois disso o registro some sozinho.',
+          title: s.history,
+          subtitle: s.historySubtitle,
           actions: [
             AtRedButton(
-              label: 'Limpar',
+              label: s.clear,
               icon: Icons.delete_outline,
               dense: true,
               outlined: true,
@@ -45,11 +45,11 @@ class _HistoryPanelState extends State<HistoryPanel> {
             ),
           ],
           child: byDay.isEmpty
-              ? const Center(
+              ? Center(
                   child: Text(
-                    'Nenhuma sessão ainda.\nEncerre uma proteção pra ver o resumo aqui.',
+                    s.historyEmpty,
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: AtShieldColors.muted),
+                    style: const TextStyle(color: AtShieldColors.muted),
                   ),
                 )
               : ListView.builder(
@@ -62,7 +62,7 @@ class _HistoryPanelState extends State<HistoryPanel> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Proteção do dia ${day.label}',
+                            s.protectionDay(day.label),
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 14,
@@ -91,17 +91,15 @@ class _HistoryPanelState extends State<HistoryPanel> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AtShieldColors.surface,
-        title: const Text('Limpar histórico?'),
-        content: const Text(
-          'Apaga todos os registros de sessão. Isso não tem volta.',
-        ),
+        title: Text(s.clearHistoryTitle),
+        content: Text(s.clearHistoryContent),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: Text(s.cancel),
           ),
           AtRedButton(
-            label: 'Limpar',
+            label: s.clear,
             dense: true,
             onPressed: () => Navigator.pop(ctx, true),
           ),
@@ -191,9 +189,9 @@ class _HistoryCard extends StatelessWidget {
                       color: AtShieldColors.accent,
                     ),
                   ),
-                  const Text(
-                    'tentativas',
-                    style: TextStyle(
+                  Text(
+                    s.attemptsLabel(record.totalAttempts),
+                    style: const TextStyle(
                       color: AtShieldColors.muted,
                       fontSize: 11,
                     ),

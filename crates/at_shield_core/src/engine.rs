@@ -368,6 +368,9 @@ impl Engine {
             }
             Command::DeleteProfile { id } => {
                 self.reject_if_session()?;
+                if Store::is_builtin_profile(&id) {
+                    return Err("perfil padrão não pode ser excluído".into());
+                }
                 let profiles = self.store.list_profiles()?;
                 if profiles.len() <= 1 {
                     return Err("precisa de pelo menos um perfil".into());
@@ -550,7 +553,7 @@ mod tests {
         let eng = Engine::new(store, filter).unwrap();
         eng.warm_protection().unwrap();
         let sites = match eng.handle(Command::ListSites {
-            profile_id: Some("profile-trabalho".into()),
+            profile_id: Some("profile-estudo".into()),
         }) {
             Response::Sites(s) => s,
             _ => panic!("expected sites"),
@@ -561,7 +564,7 @@ mod tests {
             enabled: false,
         });
         let sites = match eng.handle(Command::ListSites {
-            profile_id: Some("profile-trabalho".into()),
+            profile_id: Some("profile-estudo".into()),
         }) {
             Response::Sites(s) => s,
             _ => panic!("expected sites"),
@@ -572,7 +575,7 @@ mod tests {
         assert!(!x.enabled);
         eng.handle(Command::DeleteSite { id: tw.id.clone() });
         let sites = match eng.handle(Command::ListSites {
-            profile_id: Some("profile-trabalho".into()),
+            profile_id: Some("profile-estudo".into()),
         }) {
             Response::Sites(s) => s,
             _ => panic!("expected sites"),
@@ -589,7 +592,7 @@ mod tests {
         let eng = Engine::new(store, filter).unwrap();
         eng.warm_protection().unwrap();
         let sites = match eng.handle(Command::ListSites {
-            profile_id: Some("profile-trabalho".into()),
+            profile_id: Some("profile-estudo".into()),
         }) {
             Response::Sites(s) => s,
             _ => panic!("expected sites"),
@@ -603,7 +606,7 @@ mod tests {
         eng.handle(Command::UpsertSite {
             site: SiteRule {
                 id: "new-fake".into(),
-                profile_id: "profile-trabalho".into(),
+                profile_id: "profile-estudo".into(),
                 domain: "x.com".into(),
                 include_subdomains: true,
                 redirect: RedirectTarget::CustomPage,
@@ -614,7 +617,7 @@ mod tests {
             },
         });
         let sites = match eng.handle(Command::ListSites {
-            profile_id: Some("profile-trabalho".into()),
+            profile_id: Some("profile-estudo".into()),
         }) {
             Response::Sites(s) => s,
             _ => panic!("expected sites"),
@@ -646,7 +649,7 @@ mod tests {
         // marked in DB, but network idle until session
         assert!(filter.applied.lock().is_empty());
         eng.handle(Command::StartSession {
-            profile_id: "profile-trabalho".into(),
+            profile_id: "profile-estudo".into(),
             duration_secs: 60,
         });
         assert!(!filter.applied.lock().is_empty());
@@ -663,14 +666,14 @@ mod tests {
         let eng = Engine::new(store, filter).unwrap();
         eng.warm_protection().unwrap();
         let sites = match eng.handle(Command::ListSites {
-            profile_id: Some("profile-trabalho".into()),
+            profile_id: Some("profile-estudo".into()),
         }) {
             Response::Sites(s) => s,
             _ => panic!("expected sites"),
         };
         let id = sites[0].id.clone();
         eng.handle(Command::StartSession {
-            profile_id: "profile-trabalho".into(),
+            profile_id: "profile-estudo".into(),
             duration_secs: 60,
         });
         match eng.handle(Command::SetEnabled {
@@ -696,11 +699,11 @@ mod tests {
         let eng = Engine::new(store, filter).unwrap();
         eng.warm_protection().unwrap();
         eng.handle(Command::StartSession {
-            profile_id: "profile-trabalho".into(),
+            profile_id: "profile-estudo".into(),
             duration_secs: 60,
         });
         match eng.handle(Command::StartSession {
-            profile_id: "profile-estudos".into(),
+            profile_id: "profile-adulto".into(),
             duration_secs: 60,
         }) {
             Response::Error { message } => assert!(message.contains("sessão")),
@@ -718,7 +721,7 @@ mod tests {
         let eng = Engine::new(store, filter).unwrap();
         eng.warm_protection().unwrap();
         eng.handle(Command::StartSession {
-            profile_id: "profile-trabalho".into(),
+            profile_id: "profile-estudo".into(),
             duration_secs: 600,
         });
         assert!(eng.snapshot_session().is_some());
@@ -740,14 +743,14 @@ mod tests {
         let eng = Engine::new(store, filter).unwrap();
         eng.warm_protection().unwrap();
         eng.handle(Command::StartSession {
-            profile_id: "profile-trabalho".into(),
+            profile_id: "profile-estudo".into(),
             duration_secs: 120,
         });
         let summary = match eng.handle(Command::EndSession) {
             Response::SessionSummary(Some(r)) => r,
             other => panic!("expected summary, got {other:?}"),
         };
-        assert_eq!(summary.profile_name, "Trabalho");
+        assert_eq!(summary.profile_name, "Estudo");
         assert_eq!(summary.ended_reason, "manual");
         assert!(summary.ended_at >= summary.started_at);
         let hist = match eng.handle(Command::ListSessionHistory) {
@@ -770,6 +773,35 @@ mod tests {
             _ => panic!("expected history"),
         };
         assert!(hist.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cannot_delete_builtin_profile() {
+        let dir = std::env::temp_dir().join(format!("at-shield-builtin-{}", uuid::Uuid::new_v4()));
+        let store = Store::open(dir.join("t.db")).unwrap();
+        let filter = Arc::new(NoopFilter::default());
+        let eng = Engine::new(store, filter).unwrap();
+        eng.warm_protection().unwrap();
+        match eng.handle(Command::DeleteProfile {
+            id: "profile-estudo".into(),
+        }) {
+            Response::Error { message } => assert!(message.contains("padrão")),
+            other => panic!("expected reject, got {other:?}"),
+        }
+        let profiles = match eng.handle(Command::ListProfiles) {
+            Response::Profiles(p) => p,
+            _ => panic!("expected profiles"),
+        };
+        assert!(profiles.iter().any(|p| p.id == "profile-estudo"));
+        assert!(profiles.iter().any(|p| p.id == "profile-adulto"));
+        let adulto = match eng.handle(Command::ListSites {
+            profile_id: Some("profile-adulto".into()),
+        }) {
+            Response::Sites(s) => s,
+            _ => panic!("expected sites"),
+        };
+        assert!(adulto.iter().any(|s| s.domain == "erome.com"));
         let _ = std::fs::remove_dir_all(dir);
     }
 

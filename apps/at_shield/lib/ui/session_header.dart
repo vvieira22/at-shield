@@ -6,6 +6,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../engine/local_prefs.dart';
 import '../engine/models.dart';
 import '../engine/shield_cubit.dart';
+import '../l10n/locale_controller.dart';
+import 'start_session_dialog.dart';
 
 /// Preset session lengths (minutes). `-1` = clock picker.
 const _durationPresets = <int>[15, 30, 60, 180, 360];
@@ -23,7 +25,7 @@ class SessionHeader extends StatelessWidget {
                 .where((p) => p.id == state.activeProfileId)
                 .map((p) => p.name)
                 .firstOrNull ??
-            'Trabalho';
+            s.defaultProfileName;
         final remaining = session?.remainingLabel ?? '00:00';
         final progress = session == null || session.durationSecs == 0
             ? 0.0
@@ -40,7 +42,7 @@ class SessionHeader extends StatelessWidget {
                 child: Row(
                   children: [
                     _SessionCard(
-                      title: 'SESSÃO ATIVA',
+                      title: s.activeSession,
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: state.activeProfileId,
@@ -49,7 +51,7 @@ class SessionHeader extends StatelessWidget {
                               .map(
                                 (p) => DropdownMenuItem(
                                   value: p.id,
-                                  child: Text('Perfil: ${p.name}'),
+                                  child: Text(s.profileLabel(p.name)),
                                 ),
                               )
                               .toList(),
@@ -58,14 +60,14 @@ class SessionHeader extends StatelessWidget {
                               : (id) {
                                   if (id != null) cubit.selectProfile(id);
                                 },
-                          hint: Text('Perfil: $profileName'),
+                          hint: Text(s.profileLabel(profileName)),
                         ),
                       ),
                     ),
                     const SizedBox(width: 16),
                     if (session == null)
                       _SessionCard(
-                        title: 'DURAÇÃO',
+                        title: s.duration,
                         child: _DurationPicker(
                           minutes: state.sessionDurationMins,
                           onChanged: cubit.setSessionDurationMins,
@@ -73,7 +75,7 @@ class SessionHeader extends StatelessWidget {
                       )
                     else
                       _SessionCard(
-                        title: 'TEMPO RESTANTE',
+                        title: s.timeRemaining,
                         child: Row(
                           children: [
                             SizedBox(
@@ -103,13 +105,13 @@ class SessionHeader extends StatelessWidget {
               ),
               if (session == null) ...[
                 AtRedButton(
-                  label: 'Iniciar sessão',
+                  label: s.startSession,
                   icon: Icons.play_arrow,
-                  onPressed: () => cubit.startSession(),
+                  onPressed: () => requestStartSession(context),
                 ),
               ] else ...[
                 AtRedButton(
-                  label: 'Encerrar sessão',
+                  label: s.endSession,
                   icon: Icons.stop,
                   outlined: true,
                   onPressed: () => _requestEndSession(context, cubit),
@@ -131,18 +133,15 @@ Future<void> _requestEndSession(
     context: context,
     builder: (ctx) => AlertDialog(
       backgroundColor: AtShieldColors.surface,
-      title: const Text('Encerrar sessão?'),
-      content: const Text(
-        'A proteção vai parar e os sites bloqueados voltam a abrir. '
-        'Deseja encerrar mesmo assim?',
-      ),
+      title: Text(s.endSessionTitle),
+      content: Text(s.endSessionContent),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Cancelar'),
+          child: Text(s.cancel),
         ),
         AtRedButton(
-          label: 'Encerrar',
+          label: s.end,
           dense: true,
           onPressed: () => Navigator.pop(ctx, true),
         ),
@@ -177,14 +176,14 @@ Future<bool?> _askEndPin(BuildContext context, String expected) {
               return;
             }
             setLocal(() {
-              error = 'PIN incorreto';
+              error = s.pinIncorrect;
               ctrl.clear();
             });
           }
 
           return AlertDialog(
             backgroundColor: AtShieldColors.surface,
-            title: const Text('Confirmar PIN'),
+            title: Text(s.confirmPin),
             content: TextField(
               controller: ctrl,
               obscureText: true,
@@ -203,10 +202,10 @@ Future<bool?> _askEndPin(BuildContext context, String expected) {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancelar'),
+                child: Text(s.cancel),
               ),
               AtRedButton(
-                label: 'Confirmar',
+                label: s.confirm,
                 dense: true,
                 onPressed: submit,
               ),
@@ -224,14 +223,7 @@ class _DurationPicker extends StatelessWidget {
   final int minutes;
   final ValueChanged<int> onChanged;
 
-  static String _label(int m) {
-    if (m < 60) return '${m} min';
-    if (m % 60 == 0) {
-      final h = m ~/ 60;
-      return h == 1 ? '1 h' : '$h h';
-    }
-    return '${m ~/ 60} h ${m % 60} min';
-  }
+  static String _label(int m) => s.durationLabel(m);
 
   @override
   Widget build(BuildContext context) {
@@ -248,7 +240,7 @@ class _DurationPicker extends StatelessWidget {
           DropdownMenuItem(
             value: -1,
             child: Text(
-              isPreset ? 'Relógio…' : '${_label(minutes)} · editar',
+              isPreset ? s.clockPicker : '${_label(minutes)} · ${s.clockEdit}',
             ),
           ),
         ],
@@ -277,11 +269,11 @@ Future<int?> _askDurationClock(BuildContext context, int currentMins) async {
     context: context,
     initialTime: initial,
     initialEntryMode: TimePickerEntryMode.dial,
-    helpText: 'DURAÇÃO DA SESSÃO',
-    hourLabelText: 'Horas',
-    minuteLabelText: 'Min',
-    cancelText: 'Cancelar',
-    confirmText: 'Ok',
+    helpText: s.durationClock,
+    hourLabelText: s.hours,
+    minuteLabelText: s.minutes,
+    cancelText: s.cancel,
+    confirmText: s.ok,
     builder: (ctx, child) {
       return MediaQuery(
         data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),

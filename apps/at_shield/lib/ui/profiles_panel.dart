@@ -4,7 +4,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../engine/models.dart';
 import '../engine/shield_cubit.dart';
+import '../l10n/locale_controller.dart';
 import 'section_frame.dart';
+import 'start_session_dialog.dart';
 
 class ProfilesPanel extends StatelessWidget {
   const ProfilesPanel({super.key});
@@ -16,12 +18,11 @@ class ProfilesPanel extends StatelessWidget {
         final cubit = context.read<ShieldCubit>();
         final locked = state.editingLocked;
         return SectionFrame(
-          title: 'Perfis',
-          subtitle:
-              'Marque os sites, depois inicie a sessão pra bloquear. Edição só com sessão desligada.',
+          title: s.profiles,
+          subtitle: s.profilesSubtitle,
           actions: [
             AtRedButton(
-              label: 'Novo perfil',
+              label: s.newProfile,
               icon: Icons.add,
               dense: true,
               onPressed: locked ? null : () => _editProfile(context),
@@ -84,8 +85,8 @@ class ProfilesPanel extends StatelessWidget {
                                             .withValues(alpha: 0.2),
                                         borderRadius: BorderRadius.circular(6),
                                       ),
-                                      child: const Text(
-                                        'Em uso',
+                                      child: Text(
+                                        s.inUse,
                                         style: TextStyle(
                                           color: AtShieldColors.accent,
                                           fontSize: 11,
@@ -99,8 +100,11 @@ class ProfilesPanel extends StatelessWidget {
                               const SizedBox(height: 4),
                               Text(
                                 stats.total == 0
-                                    ? 'Nenhum site ainda'
-                                    : '${stats.enabled} de ${stats.total} sites ligados',
+                                    ? s.noSitesYet
+                                    : s.sitesEnabled(
+                                        stats.enabled,
+                                        stats.total,
+                                      ),
                                 style: const TextStyle(
                                   color: AtShieldColors.muted,
                                   fontSize: 12,
@@ -110,31 +114,31 @@ class ProfilesPanel extends StatelessWidget {
                           ),
                         ),
                         PopupMenuButton<String>(
-                          tooltip: 'Mais ações',
+                          tooltip: s.moreActions,
                           enabled: !locked,
                           color: AtShieldColors.surface2,
                           onSelected: (v) => _onMenu(context, p, v),
                           itemBuilder: (_) => [
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: 'rename',
-                              child: Text('Renomear'),
+                              child: Text(s.rename),
                             ),
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: 'duplicate',
-                              child: Text('Duplicar'),
+                              child: Text(s.duplicate),
                             ),
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: 'enable_all',
-                              child: Text('Ligar todos os sites'),
+                              child: Text(s.enableAllSites),
                             ),
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: 'disable_all',
-                              child: Text('Desligar todos os sites'),
+                              child: Text(s.disableAllSites),
                             ),
-                            if (state.profiles.length > 1)
-                              const PopupMenuItem(
+                            if (!p.isBuiltin)
+                              PopupMenuItem(
                                 value: 'delete',
-                                child: Text('Excluir perfil'),
+                                child: Text(s.deleteProfile),
                               ),
                           ],
                         ),
@@ -146,7 +150,7 @@ class ProfilesPanel extends StatelessWidget {
                       runSpacing: 8,
                       children: [
                         AtRedButton(
-                          label: active ? 'Painel' : 'Usar este',
+                          label: active ? s.panel : s.useThis,
                           dense: true,
                           outlined: active,
                           onPressed: locked
@@ -156,10 +160,8 @@ class ProfilesPanel extends StatelessWidget {
                                   if (!context.mounted) return;
                                   if (active) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Perfil já em uso — veja os sites no Painel',
-                                        ),
+                                      SnackBar(
+                                        content: Text(s.profileInUse),
                                         backgroundColor: AtShieldColors.surface2,
                                       ),
                                     );
@@ -167,12 +169,15 @@ class ProfilesPanel extends StatelessWidget {
                                 },
                         ),
                         AtRedButton(
-                          label: 'Iniciar sessão',
+                          label: s.startSession,
                           icon: Icons.play_arrow,
                           dense: true,
                           onPressed: locked
                               ? null
-                              : () => cubit.startSession(profileId: p.id),
+                              : () => requestStartSession(
+                                    context,
+                                    profileId: p.id,
+                                  ),
                         ),
                       ],
                     ),
@@ -201,7 +206,7 @@ class ProfilesPanel extends StatelessWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Perfil ${p.name} duplicado'),
+              content: Text(s.duplicateProfileMsg(p.name)),
               backgroundColor: AtShieldColors.surface2,
             ),
           );
@@ -218,17 +223,15 @@ class ProfilesPanel extends StatelessWidget {
           context: context,
           builder: (ctx) => AlertDialog(
             backgroundColor: AtShieldColors.surface,
-            title: const Text('Excluir perfil'),
-            content: Text(
-              'Apagar "${p.name}" e todos os sites dele?',
-            ),
+            title: Text(s.deleteProfileTitle),
+            content: Text(s.deleteProfileContent(p.name)),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancelar'),
+                child: Text(s.cancel),
               ),
               AtRedButton(
-                label: 'Excluir',
+                label: s.delete,
                 dense: true,
                 onPressed: () => Navigator.pop(ctx, true),
               ),
@@ -247,20 +250,20 @@ class ProfilesPanel extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AtShieldColors.surface,
-        title: Text(existing == null ? 'Novo perfil' : 'Renomear perfil'),
+        title: Text(existing == null ? s.newProfileTitle : s.renameProfileTitle),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(hintText: 'Nome do perfil'),
+          decoration: InputDecoration(hintText: s.profileNameHint),
           onSubmitted: (_) => Navigator.pop(ctx, true),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: Text(s.cancel),
           ),
           AtRedButton(
-            label: existing == null ? 'Criar' : 'Salvar',
+            label: existing == null ? s.create : s.save,
             dense: true,
             onPressed: () => Navigator.pop(ctx, true),
           ),

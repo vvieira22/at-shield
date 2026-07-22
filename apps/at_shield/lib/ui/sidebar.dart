@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../engine/models.dart';
 import '../engine/shield_cubit.dart';
+import '../l10n/locale_controller.dart';
 
 class AppSidebar extends StatelessWidget {
   const AppSidebar({super.key, required this.section, required this.onSelect});
@@ -45,11 +46,11 @@ class AppSidebar extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'A.T. SHIELD',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
@@ -57,10 +58,10 @@ class AppSidebar extends StatelessWidget {
                         letterSpacing: 0.06,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      'FOCO | DISCIPLINA | PROTEÇÃO',
-                      style: TextStyle(
+                      s.tagline,
+                      style: const TextStyle(
                         color: AtShieldColors.muted,
                         fontSize: 8.5,
                         letterSpacing: 0.04,
@@ -74,42 +75,42 @@ class AppSidebar extends StatelessWidget {
           const SizedBox(height: 28),
           _NavItem(
             id: 'painel',
-            label: 'Painel',
+            label: s.navPainel,
             icon: Icons.dashboard_outlined,
             selected: section == 'painel',
             onTap: onSelect,
           ),
           _NavItem(
             id: 'perfis',
-            label: 'Perfis',
+            label: s.navPerfis,
             icon: Icons.person_outline,
             selected: section == 'perfis',
             onTap: onSelect,
           ),
           _NavItem(
             id: 'historico',
-            label: 'Histórico',
+            label: s.navHistorico,
             icon: Icons.history,
             selected: section == 'historico',
             onTap: onSelect,
           ),
           _NavItem(
             id: 'paginas',
-            label: 'Página de bloqueio',
+            label: s.navPaginas,
             icon: Icons.web_asset_outlined,
             selected: section == 'paginas',
             onTap: onSelect,
           ),
           _NavItem(
             id: 'seguranca',
-            label: 'Segurança',
+            label: s.navSeguranca,
             icon: Icons.shield_outlined,
             selected: section == 'seguranca',
             onTap: onSelect,
           ),
           _NavItem(
             id: 'config',
-            label: 'Configurações',
+            label: s.settings,
             icon: Icons.settings_outlined,
             selected: section == 'config',
             onTap: onSelect,
@@ -173,24 +174,18 @@ _ProtStatus _protectionStatus(ShieldState state) {
   final localEnabled = state.sites.where((s) => s.enabled).length;
 
   if (sessionOn && state.networkArmed) {
-    return const _ProtStatus('Protegendo agora', AtShieldColors.success);
+    return _ProtStatus(s.statusProtecting, AtShieldColors.success);
   }
   if (sessionOn) {
-    return const _ProtStatus(
-      'Sessão · precisa Admin',
-      Color(0xFFEAB308),
-    );
+    return _ProtStatus(s.statusSessionNeedsAdmin, const Color(0xFFEAB308));
   }
   if (state.networkArmed && state.protectionActive) {
-    return const _ProtStatus('Bloqueio ativo', AtShieldColors.success);
+    return _ProtStatus(s.statusBlockActive, AtShieldColors.success);
   }
   if (enabled > 0 || localEnabled > 0 || state.protectionActive) {
-    return const _ProtStatus(
-      'Configurado · precisa Admin',
-      Color(0xFFEAB308),
-    );
+    return _ProtStatus(s.statusConfiguredNeedsAdmin, const Color(0xFFEAB308));
   }
-  return const _ProtStatus('Nenhum site ligado', AtShieldColors.muted);
+  return _ProtStatus(s.statusNoSites, AtShieldColors.muted);
 }
 
 class _NavItem extends StatelessWidget {

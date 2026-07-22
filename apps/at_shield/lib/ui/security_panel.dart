@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../engine/local_prefs.dart';
 import '../engine/windows_admin.dart';
+import '../l10n/locale_controller.dart';
 import 'section_frame.dart';
 
 class SecurityPanel extends StatefulWidget {
@@ -27,11 +28,11 @@ class _SecurityPanelState extends State<SecurityPanel> {
   Widget build(BuildContext context) {
     final prefs = widget.prefs;
     if (prefs == null) {
-      return const SectionFrame(
-        title: 'Segurança',
+      return SectionFrame(
+        title: s.security,
         child: Center(
           child: Text(
-            'Carregando…',
+            s.securityLoading,
             style: TextStyle(color: AtShieldColors.muted),
           ),
         ),
@@ -42,26 +43,24 @@ class _SecurityPanelState extends State<SecurityPanel> {
     final enabled = prefs.pinEnabled && hasPin;
 
     return SectionFrame(
-      title: 'Segurança',
-      subtitle:
-          'PIN local pra travar a UI. Esqueceu? Reset com Admin do Windows. '
-          'Não substitui Admin do serviço.',
+      title: s.security,
+      subtitle: s.securitySubtitle,
       child: ListView(
         children: [
           SurfaceCard(
             child: Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Proteger com PIN',
-                        style: TextStyle(fontWeight: FontWeight.w700),
+                        s.protectWithPin,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
-                        'Exige PIN ao abrir / ao travar o app',
+                        s.protectWithPinSub,
                         style: TextStyle(
                           color: AtShieldColors.muted,
                           fontSize: 12,
@@ -94,14 +93,12 @@ class _SecurityPanelState extends State<SecurityPanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  hasPin ? 'PIN configurado' : 'Nenhum PIN',
+                  hasPin ? s.pinConfigured : s.noPin,
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  hasPin
-                      ? 'Altere ou remova o PIN abaixo.'
-                      : 'Defina um PIN de 4 a 8 dígitos.',
+                  hasPin ? s.pinConfiguredSub : s.noPinSub,
                   style: const TextStyle(
                     color: AtShieldColors.muted,
                     fontSize: 12,
@@ -113,7 +110,7 @@ class _SecurityPanelState extends State<SecurityPanel> {
                   runSpacing: 8,
                   children: [
                     AtRedButton(
-                      label: hasPin ? 'Alterar PIN' : 'Definir PIN',
+                      label: hasPin ? s.changePin : s.setPin,
                       dense: true,
                       onPressed: () async {
                         final ok = await _setPin(context, prefs);
@@ -122,7 +119,7 @@ class _SecurityPanelState extends State<SecurityPanel> {
                     ),
                     if (hasPin)
                       AtRedButton(
-                        label: 'Remover PIN',
+                        label: s.removePin,
                         dense: true,
                         outlined: true,
                         onPressed: () async {
@@ -132,7 +129,7 @@ class _SecurityPanelState extends State<SecurityPanel> {
                       ),
                     if (enabled)
                       AtRedButton(
-                        label: 'Travar agora',
+                        label: s.lockNow,
                         icon: Icons.lock_outline,
                         dense: true,
                         onPressed: widget.onLock,
@@ -143,8 +140,8 @@ class _SecurityPanelState extends State<SecurityPanel> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            '2FA / biometria — premium (estrutura pronta). O PIN fica só neste PC em ui_prefs.json.',
+          Text(
+            s.securityFootnote,
             style: TextStyle(color: AtShieldColors.muted, fontSize: 12),
           ),
         ],
@@ -159,7 +156,7 @@ class _SecurityPanelState extends State<SecurityPanel> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AtShieldColors.surface,
-        title: const Text('Definir PIN'),
+        title: Text(s.setPinTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -171,7 +168,7 @@ class _SecurityPanelState extends State<SecurityPanel> {
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(8),
               ],
-              decoration: const InputDecoration(hintText: 'PIN (4–8 dígitos)'),
+              decoration: InputDecoration(hintText: s.pinHint),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -182,17 +179,17 @@ class _SecurityPanelState extends State<SecurityPanel> {
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(8),
               ],
-              decoration: const InputDecoration(hintText: 'Confirmar PIN'),
+              decoration: InputDecoration(hintText: s.confirmPinHint),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: Text(s.cancel),
           ),
           AtRedButton(
-            label: 'Salvar',
+            label: s.save,
             dense: true,
             onPressed: () => Navigator.pop(ctx, true),
           ),
@@ -207,7 +204,7 @@ class _SecurityPanelState extends State<SecurityPanel> {
     if (a.length < 4 || a != b) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('PIN inválido ou não confere')),
+          SnackBar(content: Text(s.invalidPin)),
         );
       }
       return false;
@@ -250,7 +247,7 @@ class _PinLockGateState extends State<PinLockGate> {
       widget.onUnlocked();
       return;
     }
-    setState(() => _error = 'PIN incorreto');
+    setState(() => _error = s.pinIncorrect);
     _controller.clear();
   }
 
@@ -259,18 +256,15 @@ class _PinLockGateState extends State<PinLockGate> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AtShieldColors.surface,
-        title: const Text('Resetar PIN?'),
-        content: const Text(
-          'Remove o PIN desta máquina. '
-          'Precisa de permissão de Administrador do Windows (UAC).',
-        ),
+        title: Text(s.resetPinTitle),
+        content: Text(s.resetPinContent),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: Text(s.cancel),
           ),
           AtRedButton(
-            label: 'Resetar',
+            label: s.reset,
             dense: true,
             onPressed: () => Navigator.pop(ctx, true),
           ),
@@ -291,7 +285,7 @@ class _PinLockGateState extends State<PinLockGate> {
       return;
     }
     setState(() {
-      _error = 'Reset cancelado ou sem permissão de Admin';
+      _error = s.resetPinFailed;
     });
   }
 
@@ -309,13 +303,13 @@ class _PinLockGateState extends State<PinLockGate> {
               children: [
                 const Icon(Icons.lock_outline, size: 36, color: AtShieldColors.accent),
                 const SizedBox(height: 14),
-                const Text(
-                  'A.T. Shield bloqueado',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                Text(
+                  s.appLocked,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Digite o PIN para continuar',
+                Text(
+                  s.enterPinToContinue,
                   style: TextStyle(color: AtShieldColors.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 18),
@@ -337,15 +331,15 @@ class _PinLockGateState extends State<PinLockGate> {
                 ),
                 const SizedBox(height: 14),
                 AtRedButton(
-                  label: _busy ? 'Aguardando Admin…' : 'Desbloquear',
+                  label: _busy ? s.waitingAdmin : s.unlock,
                   icon: Icons.lock_open,
                   onPressed: _busy ? null : _tryUnlock,
                 ),
                 const SizedBox(height: 10),
                 TextButton(
                   onPressed: _busy ? null : _forgotPin,
-                  child: const Text(
-                    'Esqueci o PIN',
+                  child: Text(
+                    s.forgotPin,
                     style: TextStyle(
                       color: AtShieldColors.muted,
                       fontSize: 13,

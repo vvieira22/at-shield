@@ -64,52 +64,104 @@ impl Store {
         Ok(())
     }
 
-    pub fn seed_if_empty(&self) -> Result<(), String> {
-        let c = self.conn()?;
-        let n: i64 = c
-            .query_row("SELECT COUNT(*) FROM profiles", [], |r| r.get(0))
-            .map_err(|e| e.to_string())?;
-        if n > 0 {
-            return Ok(());
-        }
-        drop(c);
-        let trabalho = Profile {
-            id: "profile-trabalho".into(),
-            name: "Trabalho".into(),
-            sort_order: 0,
-        };
-        let estudos = Profile {
-            id: "profile-estudos".into(),
-            name: "Estudos".into(),
-            sort_order: 1,
-        };
-        let detox = Profile {
-            id: "profile-detox".into(),
-            name: "Detox".into(),
-            sort_order: 2,
-        };
-        self.upsert_profile(&trabalho)?;
-        self.upsert_profile(&estudos)?;
-        self.upsert_profile(&detox)?;
+    /// Built-in profiles — always present, never deletable.
+    pub const BUILTIN_PROFILES: &[&str] = &[
+        "profile-estudo",
+        "profile-detox-total",
+        "profile-adulto",
+    ];
 
-        let seeds = [
-            ("instagram.com", "foco.html", true),
-            ("facebook.com", "foco.html", true),
-            ("twitter.com", "detox.html", true),
-            ("tiktok.com", "detox.html", true),
-            ("youtube.com", "foco.html", false),
-            ("reddit.com", "foco.html", true),
-            ("netflix.com", "detox.html", false),
-            ("twitch.tv", "foco.html", true),
-            ("linkedin.com", "foco.html", false),
-            ("pinterest.com", "detox.html", true),
-            ("discord.com", "foco.html", true),
-            ("x.com", "detox.html", true),
-        ];
-        for (domain, page, enabled) in seeds {
-            let mut s = SiteRule::new(&trabalho.id, domain);
+    pub fn is_builtin_profile(id: &str) -> bool {
+        Self::BUILTIN_PROFILES.contains(&id)
+    }
+
+    /// Ensures the three built-in profiles exist with a lean site list.
+    /// Also removes leftover seed profiles from older versions.
+    pub fn seed_if_empty(&self) -> Result<(), String> {
+        for stale in ["profile-trabalho", "profile-estudos", "profile-detox"] {
+            if self.list_profiles()?.iter().any(|p| p.id == stale) {
+                self.delete_profile(stale)?;
+            }
+        }
+        // Estudo — top distractions while studying
+        self.ensure_default_profile(
+            "profile-estudo",
+            "Estudo",
+            0,
+            &[
+                ("youtube.com", "foco.html"),
+                ("instagram.com", "foco.html"),
+                ("tiktok.com", "foco.html"),
+                ("twitter.com", "foco.html"),
+                ("x.com", "foco.html"),
+                ("facebook.com", "foco.html"),
+                ("reddit.com", "foco.html"),
+                ("discord.com", "foco.html"),
+                ("twitch.tv", "foco.html"),
+            ],
+        )?;
+        // Detox total — social + entertainment
+        self.ensure_default_profile(
+            "profile-detox-total",
+            "Detox total",
+            1,
+            &[
+                ("instagram.com", "detox.html"),
+                ("facebook.com", "detox.html"),
+                ("tiktok.com", "detox.html"),
+                ("twitter.com", "detox.html"),
+                ("x.com", "detox.html"),
+                ("youtube.com", "detox.html"),
+                ("reddit.com", "detox.html"),
+                ("netflix.com", "detox.html"),
+                ("twitch.tv", "detox.html"),
+                ("discord.com", "detox.html"),
+                ("whatsapp.com", "detox.html"),
+                ("pinterest.com", "detox.html"),
+            ],
+        )?;
+        // Adulto — most-visited adult sites
+        self.ensure_default_profile(
+            "profile-adulto",
+            "Adulto",
+            2,
+            &[
+                ("pornhub.com", "foco.html"),
+                ("xvideos.com", "foco.html"),
+                ("xnxx.com", "foco.html"),
+                ("xhamster.com", "foco.html"),
+                ("onlyfans.com", "foco.html"),
+                ("chaturbate.com", "foco.html"),
+                ("redtube.com", "foco.html"),
+                ("spankbang.com", "foco.html"),
+                ("erome.com", "foco.html"),
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn ensure_default_profile(
+        &self,
+        id: &str,
+        name: &str,
+        sort_order: i32,
+        sites: &[(&str, &str)],
+    ) -> Result<(), String> {
+        let exists = self.list_profiles()?.iter().any(|p| p.id == id);
+        if !exists {
+            self.upsert_profile(&Profile {
+                id: id.into(),
+                name: name.into(),
+                sort_order,
+            })?;
+        }
+        let existing = self.list_sites(Some(id))?;
+        for &(domain, page) in sites {
+            if existing.iter().any(|s| s.domain == domain) {
+                continue;
+            }
+            let mut s = SiteRule::new(id, domain);
             s.page_file = page.into();
-            s.enabled = enabled;
             self.upsert_site(&s)?;
         }
         Ok(())

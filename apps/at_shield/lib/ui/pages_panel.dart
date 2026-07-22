@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../engine/pick_html.dart';
+import '../l10n/locale_controller.dart';
 import 'section_frame.dart';
 
 class PagesPanel extends StatefulWidget {
@@ -15,10 +16,8 @@ class PagesPanel extends StatefulWidget {
 }
 
 class _PagesPanelState extends State<PagesPanel> {
-  List<_PageEntry> _pages = const [
-    _PageEntry(name: 'foco.html', label: 'Foco', builtin: true),
-    _PageEntry(name: 'detox.html', label: 'Detox', builtin: true),
-  ];
+  /// Extra HTML files under pages/ (builtins resolved in build via `s`).
+  List<_PageEntry> _extra = const [];
   String? _picked;
 
   @override
@@ -28,11 +27,8 @@ class _PagesPanelState extends State<PagesPanel> {
   }
 
   Future<void> _scanPagesDir() async {
-    final found = <_PageEntry>[
-      const _PageEntry(name: 'foco.html', label: 'Foco', builtin: true),
-      const _PageEntry(name: 'detox.html', label: 'Detox', builtin: true),
-    ];
-    final names = {for (final p in found) p.name};
+    final found = <_PageEntry>[];
+    final names = {'foco.html', 'detox.html'};
     for (final dir in _candidateDirs()) {
       if (!await dir.exists()) continue;
       await for (final e in dir.list()) {
@@ -44,8 +40,14 @@ class _PagesPanelState extends State<PagesPanel> {
         found.add(_PageEntry(name: name, label: name, path: e.path));
       }
     }
-    if (mounted) setState(() => _pages = found);
+    if (mounted) setState(() => _extra = found);
   }
+
+  List<_PageEntry> get _pages => [
+        _PageEntry(name: 'foco.html', label: s.foco, builtin: true),
+        _PageEntry(name: 'detox.html', label: s.detox, builtin: true),
+        ..._extra,
+      ];
 
   List<Directory> _candidateDirs() {
     final out = <Directory>[];
@@ -66,12 +68,11 @@ class _PagesPanelState extends State<PagesPanel> {
   @override
   Widget build(BuildContext context) {
     return SectionFrame(
-      title: 'Página de bloqueio',
-      subtitle:
-          'HTML servido quando o site redireciona pra cá. Preview em 127.0.0.1:47831.',
+      title: s.navPaginas,
+      subtitle: s.pagesSubtitle,
       actions: [
         AtRedButton(
-          label: 'Procurar HTML…',
+          label: s.browseHtml,
           icon: Icons.folder_open,
           dense: true,
           outlined: true,
@@ -84,7 +85,7 @@ class _PagesPanelState extends State<PagesPanel> {
         ),
         const SizedBox(width: 8),
         AtRedButton(
-          label: 'Abrir preview',
+          label: s.openPreview,
           icon: Icons.open_in_browser,
           dense: true,
           onPressed: () => openPagePreview('foco.html'),
@@ -124,7 +125,7 @@ class _PagesPanelState extends State<PagesPanel> {
                             const SizedBox(height: 2),
                             Text(
                               p.builtin
-                                  ? 'Embutida · ${p.name}'
+                                  ? '${s.builtin}${p.name}'
                                   : (p.path ?? p.name),
                               style: const TextStyle(
                                 color: AtShieldColors.muted,
@@ -137,13 +138,13 @@ class _PagesPanelState extends State<PagesPanel> {
                         ),
                       ),
                       IconButton(
-                        tooltip: 'Copiar nome',
+                        tooltip: s.copyName,
                         onPressed: () async {
                           await Clipboard.setData(ClipboardData(text: p.name));
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('${p.name} copiado'),
+                                content: Text(s.siteCopied(p.name)),
                                 backgroundColor: AtShieldColors.surface2,
                               ),
                             );
@@ -152,7 +153,7 @@ class _PagesPanelState extends State<PagesPanel> {
                         icon: const Icon(Icons.copy, size: 18),
                       ),
                       AtRedButton(
-                        label: 'Preview',
+                        label: s.preview,
                         dense: true,
                         outlined: true,
                         onPressed: () =>
@@ -168,9 +169,9 @@ class _PagesPanelState extends State<PagesPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Último HTML escolhido',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                  Text(
+                    s.lastPickedHtml,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
                   SelectableText(
@@ -182,8 +183,8 @@ class _PagesPanelState extends State<PagesPanel> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  const Text(
-                    'No Painel → Arquivo da página, cole este caminho (ou use Procurar…) e salve o site.',
+                  Text(
+                    s.lastPickedHint,
                     style: TextStyle(
                       color: AtShieldColors.muted,
                       fontSize: 12,
@@ -193,7 +194,7 @@ class _PagesPanelState extends State<PagesPanel> {
                   Row(
                     children: [
                       AtRedButton(
-                        label: 'Copiar caminho',
+                        label: s.copyPath,
                         dense: true,
                         outlined: true,
                         onPressed: () async {
@@ -204,7 +205,7 @@ class _PagesPanelState extends State<PagesPanel> {
                       ),
                       const SizedBox(width: 8),
                       AtRedButton(
-                        label: 'Preview',
+                        label: s.preview,
                         dense: true,
                         onPressed: () => openPagePreview(_picked!),
                       ),
@@ -215,9 +216,8 @@ class _PagesPanelState extends State<PagesPanel> {
             ),
           ],
           const SizedBox(height: 12),
-          const Text(
-            'Redirect real (hosts → :80/:443) precisa do serviço em Admin. '
-            'CSS/JS ao lado do HTML absoluto também são servidos.',
+          Text(
+            s.pagesFootnote,
             style: TextStyle(color: AtShieldColors.muted, fontSize: 12),
           ),
         ],
