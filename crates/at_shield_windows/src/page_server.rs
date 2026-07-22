@@ -492,6 +492,36 @@ fn install_ca_trust(cer: &Path) {
     }
 }
 
+/// Remove the sinkhole cert from LocalMachine\Root (MSI uninstall / --uninstall-cleanup).
+/// Matches by thumbprint of the on-disk `.cer` so we don't wipe unrelated roots.
+pub fn remove_ca_trust(cer: &Path) {
+    if !cer.is_file() {
+        return;
+    }
+    let path = cer.to_string_lossy().replace('\'', "''");
+    let script = format!(
+        "$ErrorActionPreference='Stop'; \
+         $cer = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2('{path}'); \
+         $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root','LocalMachine'); \
+         $store.Open('ReadWrite'); \
+         $store.Certificates | Where-Object {{ $_.Thumbprint -eq $cer.Thumbprint }} | ForEach-Object {{ [void]$store.Remove($_) }}; \
+         $store.Close();"
+    );
+    match std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
+        .output()
+    {
+        Ok(o) if o.status.success() => {
+            eprintln!("[at-shield] sinkhole cert removed from Root store");
+        }
+        Ok(o) => eprintln!(
+            "[at-shield] remove Root cert: {}",
+            String::from_utf8_lossy(&o.stderr)
+        ),
+        Err(e) => eprintln!("[at-shield] remove Root cert: {e}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -520,6 +550,13 @@ mod tests {
         assert_eq!(sibling, css.canonicalize().unwrap());
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn remove_ca_trust_missing_file_is_noop() {
+        remove_ca_trust(Path::new(
+            r"C:\this\path\should\not\exist\at-shield-sinkhole.cer",
+        ));
     }
 
     #[test]

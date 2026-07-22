@@ -86,6 +86,23 @@ impl WindowsFilter {
         Ok(())
     }
 
+    /// MSI uninstall: nuke WFP/hosts, drop sinkhole Root cert, remove ProgramData\ATShield.
+    pub fn uninstall_cleanup() -> Result<(), String> {
+        if let Err(e) = Self::nuke_all_blocks() {
+            eprintln!("[at-shield] uninstall nuke: {e}");
+        }
+        let base = std::env::var("PROGRAMDATA").unwrap_or_else(|_| r"C:\ProgramData".into());
+        let data = PathBuf::from(&base).join("ATShield");
+        let cer = data.join("certs").join("sinkhole.cer");
+        page_server::remove_ca_trust(&cer);
+        match std::fs::remove_dir_all(&data) {
+            Ok(()) => eprintln!("[at-shield] removed {}", data.display()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => eprintln!("[at-shield] remove {}: {e}", data.display()),
+        }
+        Ok(())
+    }
+
     fn sync_hosts_from_applied(applied: &HashMap<String, SiteRule>) -> Result<(), String> {
         let mut lines = Vec::new();
         let mut seen = std::collections::HashSet::new();
