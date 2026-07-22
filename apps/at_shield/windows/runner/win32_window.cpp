@@ -2,8 +2,10 @@
 
 #include <dwmapi.h>
 #include <flutter_windows.h>
+#include <shellapi.h>
 
 #include "resource.h"
+#include "utils.h"
 
 namespace {
 
@@ -17,6 +19,9 @@ namespace {
 #endif
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
+constexpr UINT kTrayIconMsg = WM_USER + 1;
+constexpr UINT kTrayShowId = 1001;
+constexpr UINT kTrayExitId = 1002;
 
 /// Registry key for app theme preference.
 ///
@@ -153,6 +158,126 @@ bool Win32Window::Show() {
   return ShowWindow(window_handle_, SW_SHOWNORMAL);
 }
 
+void Win32Window::EnsureTrayIcon() {
+  if (tray_added_ || !window_handle_) {
+    return;
+  }
+  // Shell tray slot is fixed (~16–32px); load the zoomed tray asset at the
+  // exact small-icon metrics so Windows doesn't pick a muddy downscale.
+  const int cx = GetSystemMetrics(SM_CXSMICON);
+  const int cy = GetSystemMetrics(SM_CYSMICON);
+  HICON icon = static_cast<HICON>(LoadImageW(
+      GetModuleHandle(nullptr), MAKEINTRESOURCEW(IDI_TRAY_ICON), IMAGE_ICON,
+      cx > 0 ? cx : 16, cy > 0 ? cy : 16, 0));
+  if (!icon) {
+    icon = static_cast<HICON>(LoadImageW(
+        GetModuleHandle(nullptr), MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON,
+        cx > 0 ? cx : 16, cy > 0 ? cy : 16, 0));
+  }
+
+  ZeroMemory(&tray_data_, sizeof(tray_data_));
+  tray_data_.cbSize = sizeof(NOTIFYICONDATAW);
+  tray_data_.hWnd = window_handle_;
+  tray_data_.uID = 1;
+  tray_data_.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+  tray_data_.uCallbackMessage = kTrayIconMsg;
+  tray_data_.hIcon = icon;
+  wcsncpy_s(tray_data_.szTip, tray_tip_.c_str(), _TRUNCATE);
+  if (Shell_NotifyIconW(NIM_ADD, &tray_data_)) {
+    tray_added_ = true;
+    tray_data_.uVersion = NOTIFYICON_VERSION_4;
+    Shell_NotifyIconW(NIM_SETVERSION, &tray_data_);
+  }
+}
+
+void Win32Window::SetTrayTooltip(const std::string& tip_utf8) {
+  if (tip_utf8.empty()) {
+    tray_tip_ = L"A.T. Shield";
+  } else {
+    // UTF-8 → UTF-16 for NOTIFYICONDATAW::szTip (128 chars max).
+    int n = MultiByteToWideChar(CP_UTF8, 0, tip_utf8.c_str(), -1, nullptr, 0);
+    if (n <= 0) {
+      return;
+    }
+    std::wstring wide(static_cast<size_t>(n), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, tip_utf8.c_str(), -1, wide.data(), n);
+    if (!wide.empty() && wide.back() == L'\0') {
+      wide.pop_back();
+    }
+    tray_tip_ = std::move(wide);
+  }
+  if (!tray_added_) {
+    return;
+  }
+  wcsncpy_s(tray_data_.szTip, tray_tip_.c_str(), _TRUNCATE);
+  tray_data_.uFlags = NIF_TIP;
+  Shell_NotifyIconW(NIM_MODIFY, &tray_data_);
+  tray_data_.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+}
+
+void Win32Window::RemoveTrayIcon() {
+  if (!tray_added_) {
+    return;
+  }
+  Shell_NotifyIconW(NIM_DELETE, &tray_data_);
+  if (tray_data_.hIcon) {
+    DestroyIcon(tray_data_.hIcon);
+    tray_data_.hIcon = nullptr;
+  }
+  tray_added_ = false;
+}
+
+void Win32Window::HideToTray() {
+  EnsureTrayIcon();
+  if (window_handle_) {
+    ShowWindow(window_handle_, SW_HIDE);
+  }
+}
+
+void Win32Window::RestoreFromTray() {
+  EnsureTrayIcon();
+  if (!window_handle_) {
+    return;
+  }
+  ShowWindow(window_handle_, SW_SHOW);
+  ShowWindow(window_handle_, SW_RESTORE);
+  SetForegroundWindow(window_handle_);
+}
+
+void Win32Window::ShowTrayMenu() {
+  if (!window_handle_) {
+    return;
+  }
+  POINT pt;
+  GetCursorPos(&pt);
+  HMENU menu = CreatePopupMenu();
+  AppendMenuW(menu, MF_STRING, kTrayShowId, L"Abrir A.T. Shield");
+  AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(menu, MF_STRING, kTrayExitId, L"Sair");
+  SetForegroundWindow(window_handle_);
+  UINT cmd =
+      TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, pt.x,
+                     pt.y, 0, window_handle_, nullptr);
+  DestroyMenu(menu);
+  if (cmd == kTrayShowId) {
+    RestoreFromTray();
+  } else if (cmd == kTrayExitId) {
+    RequestQuit();
+  }
+}
+
+void Win32Window::QuitApp() {
+  RemoveTrayIcon();
+  quit_on_close_ = true;
+  if (window_handle_) {
+    DestroyWindow(window_handle_);
+  }
+}
+
+void Win32Window::RequestQuit() {
+  QuitApp();
+}
+
 // static
 LRESULT CALLBACK Win32Window::WndProc(HWND const window,
                                       UINT const message,
@@ -179,7 +304,50 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_CLOSE:
+      if (PrefsMinimizeToTray()) {
+        HideToTray();
+        return 0;
+      }
+      // May confirm in Flutter if a focus session is live.
+      RequestQuit();
+      return 0;
+
+    case WM_SYSCOMMAND:
+      if ((wparam & 0xFFF0) == SC_MINIMIZE) {
+        if (PrefsMinimizeToTray()) {
+          HideToTray();
+          return 0;
+        }
+        // fall through — default minimize to taskbar
+      }
+      break;
+
+    case kTrayIconMsg:
+      // NOTIFYICON_VERSION_4 packs event in LOWORD(lparam).
+      if (LOWORD(lparam) == WM_LBUTTONUP || LOWORD(lparam) == NIN_SELECT) {
+        RestoreFromTray();
+        return 0;
+      }
+      if (LOWORD(lparam) == WM_RBUTTONUP || LOWORD(lparam) == WM_CONTEXTMENU) {
+        ShowTrayMenu();
+        return 0;
+      }
+      return 0;
+
+    case WM_COMMAND:
+      if (LOWORD(wparam) == kTrayShowId) {
+        RestoreFromTray();
+        return 0;
+      }
+      if (LOWORD(wparam) == kTrayExitId) {
+        RequestQuit();
+        return 0;
+      }
+      break;
+
     case WM_DESTROY:
+      RemoveTrayIcon();
       window_handle_ = nullptr;
       Destroy();
       if (quit_on_close_) {
@@ -223,6 +391,7 @@ Win32Window::MessageHandler(HWND hwnd,
 
 void Win32Window::Destroy() {
   OnDestroy();
+  RemoveTrayIcon();
 
   if (window_handle_) {
     DestroyWindow(window_handle_);

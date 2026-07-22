@@ -1,9 +1,16 @@
 import 'package:at_shield_ui/at_shield_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../engine/local_prefs.dart';
 import '../engine/models.dart';
 import '../engine/shield_cubit.dart';
+import '../l10n/locale_controller.dart';
+import 'start_session_dialog.dart';
+
+/// Preset session lengths (minutes). `-1` = clock picker.
+const _durationPresets = <int>[15, 30, 60, 180, 360];
 
 class SessionHeader extends StatelessWidget {
   const SessionHeader({super.key});
@@ -18,7 +25,7 @@ class SessionHeader extends StatelessWidget {
                 .where((p) => p.id == state.activeProfileId)
                 .map((p) => p.name)
                 .firstOrNull ??
-            'Trabalho';
+            s.defaultProfileName;
         final remaining = session?.remainingLabel ?? '00:00';
         final progress = session == null || session.durationSecs == 0
             ? 0.0
@@ -35,7 +42,7 @@ class SessionHeader extends StatelessWidget {
                 child: Row(
                   children: [
                     _SessionCard(
-                      title: 'SESSÃO ATIVA',
+                      title: s.activeSession,
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: state.activeProfileId,
@@ -44,74 +51,70 @@ class SessionHeader extends StatelessWidget {
                               .map(
                                 (p) => DropdownMenuItem(
                                   value: p.id,
-                                  child: Text('Perfil: ${p.name}'),
+                                  child: Text(s.profileLabel(p.name)),
                                 ),
                               )
                               .toList(),
-                          onChanged: (id) {
-                            if (id != null) cubit.selectProfile(id);
-                          },
-                          hint: Text('Perfil: $profileName'),
+                          onChanged: session != null
+                              ? null
+                              : (id) {
+                                  if (id != null) cubit.selectProfile(id);
+                                },
+                          hint: Text(s.profileLabel(profileName)),
                         ),
                       ),
                     ),
                     const SizedBox(width: 16),
-                    _SessionCard(
-                      title: 'TEMPO RESTANTE',
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 36,
-                            height: 36,
-                            child: CircularProgressIndicator(
-                              value: progress.clamp(0.0, 1.0),
-                              strokeWidth: 3,
-                              color: AtShieldColors.accent,
-                              backgroundColor: AtShieldColors.border,
+                    if (session == null)
+                      _SessionCard(
+                        title: s.duration,
+                        child: _DurationPicker(
+                          minutes: state.sessionDurationMins,
+                          onChanged: cubit.setSessionDurationMins,
+                        ),
+                      )
+                    else
+                      _SessionCard(
+                        title: s.timeRemaining,
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 36,
+                              height: 36,
+                              child: CircularProgressIndicator(
+                                value: progress.clamp(0.0, 1.0),
+                                strokeWidth: 3,
+                                color: AtShieldColors.accent,
+                                backgroundColor: AtShieldColors.border,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            remaining,
-                            style: const TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.5,
+                            const SizedBox(width: 12),
+                            Text(
+                              remaining,
+                              style: const TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
               if (session == null) ...[
                 AtRedButton(
-                  label: 'Iniciar sessão',
+                  label: s.startSession,
                   icon: Icons.play_arrow,
-                  onPressed: () => cubit.startSession(),
+                  onPressed: () => requestStartSession(context),
                 ),
               ] else ...[
                 AtRedButton(
-                  label: session.state == SessionState.paused ? 'Retomar' : 'Pausar',
-                  icon: session.state == SessionState.paused
-                      ? Icons.play_arrow
-                      : Icons.pause,
-                  outlined: true,
-                  onPressed: () {
-                    if (session.state == SessionState.paused) {
-                      cubit.resumeSession();
-                    } else {
-                      cubit.pauseSession();
-                    }
-                  },
-                ),
-                const SizedBox(width: 10),
-                AtRedButton(
-                  label: 'Encerrar sessão',
+                  label: s.endSession,
                   icon: Icons.stop,
                   outlined: true,
-                  onPressed: () => cubit.endSession(),
+                  onPressed: () => _requestEndSession(context, cubit),
                 ),
               ],
             ],
@@ -120,6 +123,196 @@ class SessionHeader extends StatelessWidget {
       },
     );
   }
+}
+
+Future<void> _requestEndSession(
+  BuildContext context,
+  ShieldCubit cubit,
+) async {
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AtShieldColors.surface,
+      title: Text(s.endSessionTitle),
+      content: Text(s.endSessionContent),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text(s.cancel),
+        ),
+        AtRedButton(
+          label: s.end,
+          dense: true,
+          onPressed: () => Navigator.pop(ctx, true),
+        ),
+      ],
+    ),
+  );
+  if (confirm != true || !context.mounted) return;
+
+  final prefs = await LocalPrefs.open();
+  final pinOn =
+      prefs.pinEnabled && prefs.pin != null && prefs.pin!.isNotEmpty;
+  if (pinOn) {
+    final pinOk = await _askEndPin(context, prefs.pin!);
+    if (pinOk != true || !context.mounted) return;
+  }
+
+  await cubit.endSession();
+}
+
+Future<bool?> _askEndPin(BuildContext context, String expected) {
+  final ctrl = TextEditingController();
+  String? error;
+  return showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (ctx, setLocal) {
+          void submit() {
+            if (ctrl.text.trim() == expected) {
+              Navigator.pop(ctx, true);
+              return;
+            }
+            setLocal(() {
+              error = s.pinIncorrect;
+              ctrl.clear();
+            });
+          }
+
+          return AlertDialog(
+            backgroundColor: AtShieldColors.surface,
+            title: Text(s.confirmPin),
+            content: TextField(
+              controller: ctrl,
+              obscureText: true,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(8),
+              ],
+              decoration: InputDecoration(
+                hintText: 'PIN',
+                errorText: error,
+              ),
+              onSubmitted: (_) => submit(),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(s.cancel),
+              ),
+              AtRedButton(
+                label: s.confirm,
+                dense: true,
+                onPressed: submit,
+              ),
+            ],
+          );
+        },
+      );
+    },
+  ).whenComplete(ctrl.dispose);
+}
+
+class _DurationPicker extends StatelessWidget {
+  const _DurationPicker({required this.minutes, required this.onChanged});
+
+  final int minutes;
+  final ValueChanged<int> onChanged;
+
+  static String _label(int m) => s.durationLabel(m);
+
+  @override
+  Widget build(BuildContext context) {
+    final isPreset = _durationPresets.contains(minutes);
+    final value = isPreset ? minutes : -1;
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<int>(
+        value: value,
+        dropdownColor: AtShieldColors.surface2,
+        items: [
+          ..._durationPresets.map(
+            (m) => DropdownMenuItem(value: m, child: Text(_label(m))),
+          ),
+          DropdownMenuItem(
+            value: -1,
+            child: Text(
+              isPreset ? s.clockPicker : '${_label(minutes)} · ${s.clockEdit}',
+            ),
+          ),
+        ],
+        onChanged: (v) async {
+          if (v == null) return;
+          if (v == -1) {
+            final custom = await _askDurationClock(context, minutes);
+            if (custom != null) onChanged(custom);
+            return;
+          }
+          onChanged(v);
+        },
+      ),
+    );
+  }
+}
+
+/// Dial clock → duração (horas + minutos).
+Future<int?> _askDurationClock(BuildContext context, int currentMins) async {
+  final clamped = currentMins.clamp(1, 23 * 60 + 59);
+  final initial = TimeOfDay(
+    hour: clamped ~/ 60,
+    minute: clamped % 60,
+  );
+  final picked = await showTimePicker(
+    context: context,
+    initialTime: initial,
+    initialEntryMode: TimePickerEntryMode.dial,
+    helpText: s.durationClock,
+    hourLabelText: s.hours,
+    minuteLabelText: s.minutes,
+    cancelText: s.cancel,
+    confirmText: s.ok,
+    builder: (ctx, child) {
+      return MediaQuery(
+        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
+        child: Theme(
+          data: Theme.of(ctx).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AtShieldColors.accent,
+              onPrimary: Colors.white,
+              surface: AtShieldColors.surface,
+              onSurface: AtShieldColors.text,
+              secondary: AtShieldColors.accent,
+              onSecondary: Colors.white,
+            ),
+            timePickerTheme: TimePickerThemeData(
+              backgroundColor: AtShieldColors.surface,
+              dialBackgroundColor: AtShieldColors.surface2,
+              dialHandColor: AtShieldColors.accent,
+              dialTextColor: AtShieldColors.text,
+              hourMinuteTextColor: AtShieldColors.text,
+              hourMinuteColor: AtShieldColors.surface2,
+              dayPeriodTextColor: AtShieldColors.text,
+              entryModeIconColor: AtShieldColors.muted,
+              helpTextStyle: const TextStyle(
+                color: AtShieldColors.muted,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.12,
+                fontSize: 11,
+              ),
+            ),
+          ),
+          child: child!,
+        ),
+      );
+    },
+  );
+  if (picked == null) return null;
+  final total = picked.hour * 60 + picked.minute;
+  if (total < 1) return 1;
+  return total.clamp(1, 24 * 60);
 }
 
 class _SessionCard extends StatelessWidget {

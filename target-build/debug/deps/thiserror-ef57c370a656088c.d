@@ -1,0 +1,14 @@
+C:\Users\Vitor\Desktop\projects\at-shield\target-build\debug\deps\thiserror-ef57c370a656088c.d: C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\lib.rs C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\aserror.rs C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\display.rs C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\var.rs C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\private.rs C:\Users\Vitor\Desktop\projects\at-shield\target-build\debug\build\thiserror-01aa58215fa415f9\out/private.rs
+
+C:\Users\Vitor\Desktop\projects\at-shield\target-build\debug\deps\libthiserror-ef57c370a656088c.rlib: C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\lib.rs C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\aserror.rs C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\display.rs C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\var.rs C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\private.rs C:\Users\Vitor\Desktop\projects\at-shield\target-build\debug\build\thiserror-01aa58215fa415f9\out/private.rs
+
+C:\Users\Vitor\Desktop\projects\at-shield\target-build\debug\deps\libthiserror-ef57c370a656088c.rmeta: C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\lib.rs C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\aserror.rs C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\display.rs C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\var.rs C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\private.rs C:\Users\Vitor\Desktop\projects\at-shield\target-build\debug\build\thiserror-01aa58215fa415f9\out/private.rs
+
+C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\lib.rs:
+C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\aserror.rs:
+C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\display.rs:
+C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\var.rs:
+C:\Users\Vitor\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.18\src\private.rs:
+C:\Users\Vitor\Desktop\projects\at-shield\target-build\debug\build\thiserror-01aa58215fa415f9\out/private.rs:
+
+# env-dep:OUT_DIR=C:\\Users\\Vitor\\Desktop\\projects\\at-shield\\target-build\\debug\\build\\thiserror-01aa58215fa415f9\\out

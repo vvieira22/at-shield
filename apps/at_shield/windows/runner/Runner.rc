@@ -53,6 +53,7 @@ END
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
 IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
+IDI_TRAY_ICON           ICON                    "resources\\tray_icon.ico"
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -90,12 +91,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.nerd" "\0"
-            VALUE "FileDescription", "at_shield" "\0"
+            VALUE "FileDescription", "A.T. Shield" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "at_shield" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.nerd. All rights reserved." "\0"
             VALUE "OriginalFilename", "at_shield.exe" "\0"
-            VALUE "ProductName", "at_shield" "\0"
+            VALUE "ProductName", "A.T. Shield" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

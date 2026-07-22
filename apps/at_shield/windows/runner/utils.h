@@ -16,4 +16,10 @@ std::string Utf8FromUtf16(const wchar_t* utf16_string);
 // encoded in UTF-8. Returns an empty std::vector<std::string> on failure.
 std::vector<std::string> GetCommandLineArguments();
 
+/// Reads LOCALAPPDATA/ATShield/ui_prefs.json for a boolean key.
+bool PrefsBool(const char* key);
+
+inline bool PrefsStartMinimized() { return PrefsBool("start_minimized"); }
+inline bool PrefsMinimizeToTray() { return PrefsBool("minimize_to_tray"); }
+
 #endif  // RUNNER_UTILS_H_

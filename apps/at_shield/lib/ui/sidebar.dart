@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../engine/models.dart';
 import '../engine/shield_cubit.dart';
+import '../l10n/locale_controller.dart';
 
 class AppSidebar extends StatelessWidget {
   const AppSidebar({super.key, required this.section, required this.onSelect});
@@ -22,37 +23,45 @@ class AppSidebar extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AtShieldColors.accent,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'NERD',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 11,
-                    letterSpacing: 0.08,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.asset(
+                  'assets/icon.png',
+                  width: 68,
+                  height: 68,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Container(
+                    width: 68,
+                    height: 68,
+                    color: AtShieldColors.accent,
+                    alignment: Alignment.center,
+                    child: const Text(
+                      'AT',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                      ),
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              const Expanded(
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'A.T. SHIELD',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        fontSize: 13,
+                        fontSize: 14,
                         letterSpacing: 0.06,
                       ),
                     ),
+                    const SizedBox(height: 2),
                     Text(
-                      'FOCO | DISCIPLINA | PROTEÇÃO',
-                      style: TextStyle(
+                      s.tagline,
+                      style: const TextStyle(
                         color: AtShieldColors.muted,
                         fontSize: 8.5,
                         letterSpacing: 0.04,
@@ -66,35 +75,42 @@ class AppSidebar extends StatelessWidget {
           const SizedBox(height: 28),
           _NavItem(
             id: 'painel',
-            label: 'Painel',
+            label: s.navPainel,
             icon: Icons.dashboard_outlined,
             selected: section == 'painel',
             onTap: onSelect,
           ),
           _NavItem(
             id: 'perfis',
-            label: 'Perfis',
+            label: s.navPerfis,
             icon: Icons.person_outline,
             selected: section == 'perfis',
             onTap: onSelect,
           ),
           _NavItem(
+            id: 'historico',
+            label: s.navHistorico,
+            icon: Icons.history,
+            selected: section == 'historico',
+            onTap: onSelect,
+          ),
+          _NavItem(
             id: 'paginas',
-            label: 'Página de bloqueio',
+            label: s.navPaginas,
             icon: Icons.web_asset_outlined,
             selected: section == 'paginas',
             onTap: onSelect,
           ),
           _NavItem(
             id: 'seguranca',
-            label: 'Segurança',
+            label: s.navSeguranca,
             icon: Icons.shield_outlined,
             selected: section == 'seguranca',
             onTap: onSelect,
           ),
           _NavItem(
             id: 'config',
-            label: 'Configurações',
+            label: s.settings,
             icon: Icons.settings_outlined,
             selected: section == 'config',
             onTap: onSelect,
@@ -102,6 +118,7 @@ class AppSidebar extends StatelessWidget {
           const Spacer(),
           BlocBuilder<ShieldCubit, ShieldState>(
             builder: (context, state) {
+              final status = _protectionStatus(state);
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -111,20 +128,18 @@ class AppSidebar extends StatelessWidget {
                         width: 8,
                         height: 8,
                         decoration: BoxDecoration(
-                          color: state.protectionActive
-                              ? AtShieldColors.success
-                              : AtShieldColors.muted,
+                          color: status.color,
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        state.protectionActive
-                            ? 'Proteção ativa'
-                            : 'Proteção inativa',
-                        style: const TextStyle(
-                          color: AtShieldColors.muted,
-                          fontSize: 12,
+                      Expanded(
+                        child: Text(
+                          status.label,
+                          style: const TextStyle(
+                            color: AtShieldColors.muted,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ],
@@ -145,6 +160,32 @@ class AppSidebar extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ProtStatus {
+  const _ProtStatus(this.label, this.color);
+  final String label;
+  final Color color;
+}
+
+_ProtStatus _protectionStatus(ShieldState state) {
+  final sessionOn = state.session != null;
+  final enabled = state.enabledSitesTotal;
+  final localEnabled = state.sites.where((s) => s.enabled).length;
+
+  if (sessionOn && state.networkArmed) {
+    return _ProtStatus(s.statusProtecting, AtShieldColors.success);
+  }
+  if (sessionOn) {
+    return _ProtStatus(s.statusSessionNeedsAdmin, const Color(0xFFEAB308));
+  }
+  if (state.networkArmed && state.protectionActive) {
+    return _ProtStatus(s.statusBlockActive, AtShieldColors.success);
+  }
+  if (enabled > 0 || localEnabled > 0 || state.protectionActive) {
+    return _ProtStatus(s.statusConfiguredNeedsAdmin, const Color(0xFFEAB308));
+  }
+  return _ProtStatus(s.statusNoSites, AtShieldColors.muted);
 }
 
 class _NavItem extends StatelessWidget {
@@ -173,14 +214,6 @@ class _NavItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           onTap: () => onTap(id),
           child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: selected
-                  ? const Border(
-                      left: BorderSide(color: AtShieldColors.accent, width: 3),
-                    )
-                  : null,
-            ),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [

@@ -1,7 +1,7 @@
 //! Windows adapter: WFP hard-block + hosts sinkhole for custom HTML pages.
 //!
 //! - RedirectTarget::Block       → WFP IP drop
-//! - RedirectTarget::CustomPage  → hosts → 127.0.0.1 + local :80/:443 page server
+//! - RedirectTarget::CustomPage  → hosts → 127.0.0.2 + page server on that IP :80/:443
 //!
 //! ponytail: without elevation WFP/hosts/port 80-443 fail → tracking-only.
 
@@ -20,6 +20,8 @@ pub use page_server::PageServer;
 pub struct WindowsFilter {
     inner: Mutex<Inner>,
     pages: Option<Arc<PageServer>>,
+    /// Last hosts/WFP write succeeded (needs Admin).
+    armed: Mutex<bool>,
 }
 
 struct Inner {
@@ -60,6 +62,7 @@ impl WindowsFilter {
                 applied: HashMap::new(),
             }),
             pages,
+            armed: Mutex::new(false),
         })
     }
 
@@ -98,11 +101,19 @@ impl WindowsFilter {
         }
         hosts::rewrite(&lines)
     }
+
+    fn mark_armed(&self, ok: bool) {
+        *self.armed.lock() = ok;
+    }
 }
 
 impl NetworkFilter for WindowsFilter {
     fn name(&self) -> &'static str {
         "windows_wfp_hosts"
+    }
+
+    fn network_armed(&self) -> bool {
+        *self.armed.lock()
     }
 
     fn apply(&self, site: &SiteRule) -> Result<(), FilterError> {
@@ -115,11 +126,16 @@ impl NetworkFilter for WindowsFilter {
             pages.clear_route(&site.domain);
         }
 
+        let mut step_ok = true;
         match site.redirect {
             RedirectTarget::Block => {
                 if let Some(wfp) = g.wfp.as_mut() {
-                    wfp.block_domain(&site.domain, site.include_subdomains)
-                        .map_err(FilterError)?;
+                    if let Err(e) = wfp.block_domain(&site.domain, site.include_subdomains) {
+                        eprintln!("[at-shield] WFP block (precisa Admin): {e}");
+                        step_ok = false;
+                    }
+                } else {
+                    step_ok = false;
                 }
             }
             RedirectTarget::CustomPage => {
@@ -129,33 +145,86 @@ impl NetworkFilter for WindowsFilter {
             }
         }
         g.applied.insert(site.domain.clone(), site.clone());
-        Self::sync_hosts_from_applied(&g.applied).map_err(FilterError)?;
+        let has_pages = g
+            .applied
+            .values()
+            .any(|s| s.redirect == RedirectTarget::CustomPage);
+        // ponytail: hosts/WFP need Admin — never abort the session; stay tracking-only
+        if let Err(e) = Self::sync_hosts_from_applied(&g.applied) {
+            eprintln!("[at-shield] hosts sync (precisa Admin): {e}");
+            if has_pages {
+                step_ok = false;
+            }
+        }
+        self.mark_armed(step_ok);
         Ok(())
     }
 
     fn remove(&self, site: &SiteRule) -> Result<(), FilterError> {
         let mut g = self.inner.lock();
         if let Some(wfp) = g.wfp.as_mut() {
-            wfp.unblock_domain(&site.domain).map_err(FilterError)?;
+            if let Err(e) = wfp.unblock_domain(&site.domain) {
+                eprintln!("[at-shield] WFP unblock: {e}");
+            }
         }
         if let Some(pages) = &self.pages {
             pages.clear_route(&site.domain);
         }
         g.applied.remove(&site.domain);
-        Self::sync_hosts_from_applied(&g.applied).map_err(FilterError)?;
+        if let Err(e) = Self::sync_hosts_from_applied(&g.applied) {
+            eprintln!("[at-shield] hosts sync (precisa Admin): {e}");
+            self.mark_armed(false);
+        }
         Ok(())
     }
 
     fn clear_all(&self) -> Result<(), FilterError> {
         let mut g = self.inner.lock();
         if let Some(wfp) = g.wfp.as_mut() {
-            wfp.clear().map_err(FilterError)?;
+            if let Err(e) = wfp.clear() {
+                eprintln!("[at-shield] WFP clear (precisa Admin): {e}");
+                self.mark_armed(false);
+            }
         }
         if let Some(pages) = &self.pages {
             pages.clear_routes();
         }
         g.applied.clear();
-        hosts::clear().map_err(FilterError)?;
+        if let Err(e) = hosts::clear() {
+            eprintln!("[at-shield] hosts clear (precisa Admin): {e}");
+            self.mark_armed(false);
+        }
         Ok(())
+    }
+
+    fn reset_block_hits(&self) {
+        if let Some(pages) = &self.pages {
+            pages.reset_hits();
+        }
+    }
+
+    fn drain_block_hits(&self) -> Vec<(String, u32)> {
+        self.pages
+            .as_ref()
+            .map(|p| p.drain_hits())
+            .unwrap_or_default()
+    }
+}
+
+impl Drop for WindowsFilter {
+    fn drop(&mut self) {
+        // WFP DYNAMIC dies with the process; hosts file does NOT — always wipe.
+        eprintln!("[at-shield] filter drop — limpando hosts/rotas");
+        if let Some(pages) = &self.pages {
+            pages.clear_routes();
+        }
+        if let Err(e) = hosts::clear() {
+            eprintln!("[at-shield] hosts clear on drop: {e}");
+        }
+        let mut g = self.inner.lock();
+        if let Some(wfp) = g.wfp.as_mut() {
+            let _ = wfp.clear();
+        }
+        g.applied.clear();
     }
 }
