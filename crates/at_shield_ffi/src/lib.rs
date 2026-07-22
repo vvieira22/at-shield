@@ -33,6 +33,13 @@ fn default_pages_dir() -> PathBuf {
     PathBuf::from("pages")
 }
 
+fn default_cert_dir() -> PathBuf {
+    let base = std::env::var("LOCALAPPDATA")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".into());
+    PathBuf::from(base).join("ATShield").join("certs")
+}
+
 /// Start in-process engine (dev / fallback when service is down).
 #[no_mangle]
 pub extern "C" fn at_shield_engine_start() -> i32 {
@@ -46,7 +53,10 @@ pub extern "C" fn at_shield_engine_start() -> i32 {
     };
     #[cfg(windows)]
     let filter: Arc<dyn at_shield_core::NetworkFilter> = {
-        match at_shield_windows::WindowsFilter::new(Some(default_pages_dir())) {
+        match at_shield_windows::WindowsFilter::new(
+            Some(default_pages_dir()),
+            default_cert_dir(),
+        ) {
             Ok(f) => Arc::new(f),
             Err(_) => Arc::new(NoopFilter::default()),
         }

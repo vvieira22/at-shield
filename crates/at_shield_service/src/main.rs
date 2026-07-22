@@ -1,7 +1,7 @@
 //! A.T. Shield background service — named pipe IPC, engine always warm.
 //!
 //! Run: `at-shield-service --console` for foreground dev.
-//! Windows service registration comes with the installer (phase 3).
+//! Production: MSI registers this exe as Windows service `AtShieldService` (LocalSystem).
 
 mod pipe;
 
@@ -71,6 +71,29 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let console = args.iter().any(|a| a == "--console" || a == "-c");
     let nuke = args.iter().any(|a| a == "--nuke");
+    let uninstall = args.iter().any(|a| a == "--uninstall-cleanup");
+
+    if uninstall {
+        #[cfg(windows)]
+        {
+            eprintln!("[at-shield] uninstall cleanup — WFP/hosts/cert/ProgramData...");
+            match at_shield_windows::WindowsFilter::uninstall_cleanup() {
+                Ok(()) => {
+                    eprintln!("[at-shield] uninstall cleanup ok");
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("[at-shield] uninstall cleanup falhou: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            eprintln!("uninstall-cleanup só no Windows");
+            std::process::exit(1);
+        }
+    }
 
     if nuke {
         #[cfg(windows)]
@@ -104,7 +127,7 @@ fn main() {
 
     #[cfg(windows)]
     {
-        // ponytail: without installer, --console is the path; service dispatch is best-effort
+        // SCM dispatch when registered by the MSI; for local dev use --console.
         if let Err(e) = run_as_service() {
             eprintln!("service dispatch failed ({e}), try --console");
             std::process::exit(1);
