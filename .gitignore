@@ -11,3 +11,6 @@ apps/at_shield/build/
 packages/**/.dart_tool/
 packages/**/build/
 *.db
+/installer/staging/
+/installer/generated/
+/dist/

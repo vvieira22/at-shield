@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A.T. Shield per-machine MSI.
+  Build via scripts\build-installer.ps1 (stages Release binaries, harvests files, wix build).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="A.T. Shield"
+      Manufacturer="NERD"
+      Version="$(var.ProductVersion)"
+      UpgradeCode="8F3C2A1B-4D5E-6F70-8192-A3B4C5D6E7F8"
+      Scope="perMachine"
+      Compressed="yes">
+
+    <SummaryInformation
+        Description="A.T. Shield — bloqueador de sites para sessões de foco"
+        Manufacturer="NERD" />
+
+    <MajorUpgrade
+        DowngradeErrorMessage="Já existe uma versão mais recente do A.T. Shield instalada."
+        Schedule="afterInstallInitialize" />
+
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="AppIcon" SourceFile="$(var.ProjectRoot)\apps\at_shield\windows\runner\resources\app_icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+
+    <Feature Id="ProductFeature" Title="A.T. Shield" Level="1">
+      <ComponentRef Id="AppExeComponent" />
+      <ComponentRef Id="ServiceComponent" />
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentGroupRef Id="UiFiles" />
+      <ComponentGroupRef Id="PagesFiles" />
+    </Feature>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="AT Shield">
+        <Directory Id="PagesFolder" Name="pages" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="A.T. Shield" />
+    </StandardDirectory>
+
+    <!-- UI entrypoint (explicit Id for Start Menu shortcut) -->
+    <Component Id="AppExeComponent" Directory="INSTALLFOLDER" Guid="D4E5F6A7-B8C9-0123-DEF0-234567890123">
+      <File Id="AppExe" Source="!(bindpath.Staging)\ui\at_shield.exe" KeyPath="yes" />
+    </Component>
+
+    <!-- Elevated Windows service: WFP / hosts / sinkhole. UI stays unelevated. -->
+    <Component Id="ServiceComponent" Directory="INSTALLFOLDER" Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
+      <File Id="ServiceExe" Source="!(bindpath.Staging)\service\at-shield-service.exe" KeyPath="yes" />
+      <ServiceInstall
+          Id="AtShieldServiceInstall"
+          Name="AtShieldService"
+          DisplayName="A.T. Shield Service"
+          Description="Serviço de bloqueio de rede do A.T. Shield (WFP/hosts). Roda como LocalSystem."
+          Type="ownProcess"
+          Start="auto"
+          Account="LocalSystem"
+          ErrorControl="normal"
+          Vital="yes" />
+      <ServiceControl
+          Id="AtShieldServiceControl"
+          Name="AtShieldService"
+          Start="install"
+          Stop="both"
+          Remove="uninstall"
+          Wait="yes" />
+    </Component>
+
+    <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder" Guid="C3D4E5F6-A7B8-9012-CDEF-123456789012">
+      <Shortcut
+          Id="ApplicationStartMenuShortcut"
+          Name="A.T. Shield"
+          Description="A.T. Shield"
+          Target="[!AppExe]"
+          WorkingDirectory="INSTALLFOLDER"
+          Icon="AppIcon" />
+      <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+      <RegistryValue
+          Root="HKLM"
+          Key="Software\ATShield"
+          Name="InstallDir"
+          Type="string"
+          Value="[INSTALLFOLDER]"
+          KeyPath="yes" />
+    </Component>
+
+    <!-- Deferred + no impersonation: runs as SYSTEM during uninstall -->
+    <CustomAction
+        Id="UninstallCleanup"
+        FileRef="ServiceExe"
+        ExeCommand="--uninstall-cleanup"
+        Execute="deferred"
+        Impersonate="no"
+        Return="ignore" />
+
+    <InstallExecuteSequence>
+      <!-- After StopServices so the exe is unlocked; before RemoveFiles so it still exists.
+           Skip on major-upgrade removal (UPGRADINGPRODUCTCODE) so profiles/DB survive. -->
+      <Custom Action="UninstallCleanup" After="StopServices" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>
