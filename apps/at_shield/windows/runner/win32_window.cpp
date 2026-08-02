@@ -262,7 +262,7 @@ void Win32Window::ShowTrayMenu() {
   if (cmd == kTrayShowId) {
     RestoreFromTray();
   } else if (cmd == kTrayExitId) {
-    RequestQuit();
+    RequestExit();
   }
 }
 
@@ -275,6 +275,10 @@ void Win32Window::QuitApp() {
 }
 
 void Win32Window::RequestQuit() {
+  QuitApp();
+}
+
+void Win32Window::RequestExit() {
   QuitApp();
 }
 
@@ -305,11 +309,8 @@ Win32Window::MessageHandler(HWND hwnd,
                             LPARAM const lparam) noexcept {
   switch (message) {
     case WM_CLOSE:
-      if (PrefsMinimizeToTray()) {
-        HideToTray();
-        return 0;
-      }
-      // May confirm in Flutter if a focus session is live.
+      // Always ask Flutter: with a live session it confirms + disarms;
+      // otherwise it may hide to tray. Never leave blocks orphaned on "close".
       RequestQuit();
       return 0;
 
@@ -341,7 +342,7 @@ Win32Window::MessageHandler(HWND hwnd,
         return 0;
       }
       if (LOWORD(wparam) == kTrayExitId) {
-        RequestQuit();
+        RequestExit();
         return 0;
       }
       break;

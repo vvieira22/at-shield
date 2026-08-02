@@ -121,7 +121,7 @@ class _SecurityPanelState extends State<SecurityPanel> {
                       AtRedButton(
                         label: s.removePin,
                         dense: true,
-                        outlined: true,
+                        ghost: true,
                         onPressed: () async {
                           await prefs.setPin(null, enabled: false);
                           widget.onPrefsChanged();
@@ -301,7 +301,7 @@ class _PinLockGateState extends State<PinLockGate> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.lock_outline, size: 36, color: AtShieldColors.accent),
+                const Icon(Icons.lock_outline, size: 36, color: AtShieldColors.muted),
                 const SizedBox(height: 14),
                 Text(
                   s.appLocked,

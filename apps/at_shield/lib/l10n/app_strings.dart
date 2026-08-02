@@ -171,6 +171,10 @@ class AppStrings {
     required this.closeAppTitle,
     required this.closeAppContent,
     required this.closeAndStop,
+    required this.restoreSessionTitle,
+    required this.restoreSessionContent,
+    required this.restoreSessionYes,
+    required this.restoreSessionNo,
     required this.serviceOfflineLong,
     required this.failTalkService,
     required this.endSessionToEditSites,
@@ -400,6 +404,10 @@ class AppStrings {
   final String closeAppTitle;
   final String closeAppContent;
   final String closeAndStop;
+  final String restoreSessionTitle;
+  final String restoreSessionContent;
+  final String restoreSessionYes;
+  final String restoreSessionNo;
   final String trayProtectingPrefix;
   final String trayProtectingMid;
   final String serviceOfflineLong;
@@ -432,6 +440,10 @@ class AppStrings {
   String siteCopied(String name) => '$name$siteCopiedSuffix';
   String trayProtecting(String profile, String remaining) =>
       '$trayProtectingPrefix$profile$trayProtectingMid$remaining';
+  String restoreSessionBody(String profile, String remaining) =>
+      restoreSessionContent
+          .replaceAll('{profile}', profile)
+          .replaceAll('{remaining}', remaining);
   String protectionDay(String date) => '$protectionDayPrefix$date';
   String protectionProfile(String name) => '$protectionProfilePrefix$name';
   String duplicateProfileMsg(String name) =>
@@ -676,6 +688,12 @@ class AppStrings {
         'Tem uma sessão de proteção ativa. '
         'Se fechar agora, o bloqueio para e os sites voltam a abrir.',
     closeAndStop: 'Fechar e parar',
+    restoreSessionTitle: 'Restaurar sessão?',
+    restoreSessionContent:
+        'A sessão "{profile}" foi interrompida ({remaining} restantes). '
+        'O bloqueio já foi solto. Quer restaurar de onde parou?',
+    restoreSessionYes: 'Restaurar e bloquear',
+    restoreSessionNo: 'Continuar limpo',
     trayProtectingPrefix: 'A.T. Shield · Protegendo (',
     trayProtectingMid: ') · ',
     serviceOfflineLong:
@@ -917,6 +935,12 @@ class AppStrings {
         'A protection session is active. '
         'If you close now, blocking stops and sites will open again.',
     closeAndStop: 'Close and stop',
+    restoreSessionTitle: 'Restore session?',
+    restoreSessionContent:
+        'Session "{profile}" was interrupted ({remaining} left). '
+        'Blocking is already off. Resume where you left off?',
+    restoreSessionYes: 'Restore and block',
+    restoreSessionNo: 'Continue clean',
     trayProtectingPrefix: 'A.T. Shield · Protecting (',
     trayProtectingMid: ') · ',
     serviceOfflineLong:

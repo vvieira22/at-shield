@@ -88,8 +88,19 @@ pub struct SessionRecord {
     pub duration_secs: u64,
     /// Wall-clock span start→end.
     pub elapsed_secs: u64,
-    /// `manual` | `timer`
+    /// `manual` | `timer` | `ui_gone`
     pub ended_reason: String,
     pub total_attempts: u32,
     pub attempts: Vec<DomainHit>,
+}
+
+/// Session parked when the UI process dies — network is cleared, restore is optional.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InterruptedSession {
+    pub profile_id: String,
+    pub profile_name: String,
+    pub remaining_secs: u64,
+    pub duration_secs: u64,
+    pub started_at: i64,
+    pub interrupted_at: i64,
 }

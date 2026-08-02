@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show pid;
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -17,6 +18,9 @@ class ShieldCubit extends Cubit<ShieldState> {
   Timer? _reconnect;
   Timer? _healthTick;
   LocalPrefs? _prefs;
+
+  LocalPrefs? get prefs => _prefs;
+  bool get minimizeToTray => _prefs?.minimizeToTray ?? false;
 
   Future<void> boot() async {
     _reconnect?.cancel();
@@ -63,9 +67,12 @@ class ShieldCubit extends Cubit<ShieldState> {
     });
   }
 
+  Future<Map<String, dynamic>> _health() =>
+      _rpc.call({'cmd': 'health', 'ui_pid': pid});
+
   Future<void> refresh() async {
     try {
-      final health = await _rpc.call({'cmd': 'health'});
+      final health = await _health();
       if (_ok(health) == 'error') {
         emit(state.copyWith(
           connected: false,
@@ -94,11 +101,13 @@ class ShieldCubit extends Cubit<ShieldState> {
         'profile_id': null,
       });
       final session = await _rpc.call({'cmd': 'get_session'});
+      final interrupted = await _rpc.call({'cmd': 'get_interrupted_session'});
       final list = _parseSites(sites);
       final sel = state.selectedSiteId;
       final validSel =
           (sel != null && list.any((s) => s.id == sel)) ? sel : null;
       final h = _data(health);
+      final parked = _parseInterrupted(interrupted);
 
       emit(state.copyWith(
         connected: true,
@@ -118,6 +127,8 @@ class ShieldCubit extends Cubit<ShieldState> {
         clearSession: _ok(session) == 'session' && _dataRaw(session) == null,
         selectedSiteId: validSel,
         clearSelected: validSel == null,
+        interruptedSession: parked,
+        clearInterrupted: parked == null,
       ));
     } catch (e) {
       emit(state.copyWith(
@@ -404,6 +415,20 @@ class ShieldCubit extends Cubit<ShieldState> {
 
   void clearLastSummary() => emit(state.copyWith(clearLastSummary: true));
 
+  Future<void> restoreInterruptedSession() async {
+    final resp = await _rpc.call({'cmd': 'restore_interrupted_session'});
+    if (_ok(resp) == 'error') {
+      emit(state.copyWith(error: _err(resp), clearInterrupted: true));
+      return;
+    }
+    await refresh();
+  }
+
+  Future<void> discardInterruptedSession() async {
+    await _rpc.call({'cmd': 'discard_interrupted_session'});
+    emit(state.copyWith(clearInterrupted: true));
+  }
+
   Future<void> loadSessionHistory() async {
     if (!state.connected) return;
     final resp = await _rpc.call({'cmd': 'list_session_history'});
@@ -450,7 +475,7 @@ class ShieldCubit extends Cubit<ShieldState> {
   }
 
   Future<void> _refreshHealth() async {
-    final health = await _rpc.call({'cmd': 'health'});
+    final health = await _health();
     if (_ok(health) == 'error') return;
     final h = _data(health);
     emit(state.copyWith(
@@ -461,17 +486,24 @@ class ShieldCubit extends Cubit<ShieldState> {
     ));
   }
 
+  /// Drop protection before the UI process exits (quit / taskbar close / tray Sair).
+  Future<void> disarmForQuit() async {
+    _sessionTick?.cancel();
+    _healthTick?.cancel();
+    try {
+      await _rpc
+          .call({'cmd': 'end_session'})
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {}
+  }
+
   @override
   Future<void> close() async {
     _sessionTick?.cancel();
     _healthTick?.cancel();
     _reconnect?.cancel();
     // Fechar a UI não pode deixar o serviço armado com sessão viva.
-    try {
-      await _rpc
-          .call({'cmd': 'end_session'})
-          .timeout(const Duration(milliseconds: 900));
-    } catch (_) {}
+    await disarmForQuit();
     await _rpc.close();
     return super.close();
   }
@@ -541,6 +573,13 @@ class ShieldCubit extends Cubit<ShieldState> {
     if (_ok(r) != 'session') return null;
     final d = r['data'];
     if (d is Map<String, dynamic>) return FocusSession.fromJson(d);
+    return null;
+  }
+
+  static InterruptedSession? _parseInterrupted(Map<String, dynamic> r) {
+    if (_ok(r) != 'interrupted_session') return null;
+    final d = r['data'];
+    if (d is Map<String, dynamic>) return InterruptedSession.fromJson(d);
     return null;
   }
 }

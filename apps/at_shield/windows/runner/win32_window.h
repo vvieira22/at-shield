@@ -46,7 +46,11 @@ class Win32Window {
   void RestoreFromTray();
 
   /// Ask to quit (Flutter may confirm if a session is running).
+  /// Window X / taskbar close — may hide to tray when idle + pref on.
   virtual void RequestQuit();
+
+  /// Tray "Sair" / definitive exit — never hide to tray.
+  virtual void RequestExit();
 
   /// Hover text on the notification-area icon (UTF-8 from Flutter).
   void SetTrayTooltip(const std::string& tip_utf8);
