@@ -26,101 +26,421 @@ class SessionHeader extends StatelessWidget {
                 .map((p) => p.name)
                 .firstOrNull ??
             s.defaultProfileName;
-        final remaining = session?.remainingLabel ?? '00:00';
-        final progress = session == null || session.durationSecs == 0
-            ? 0.0
-            : 1.0 - (session.remainingSecs / session.durationSecs);
 
-        return Container(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: AtShieldColors.border)),
+        final reduce = MediaQuery.disableAnimationsOf(context);
+        final child = session != null
+            ? _ActiveSessionBar(
+                key: const ValueKey('session-active'),
+                session: session,
+                profileName: session.profileName.isNotEmpty
+                    ? session.profileName
+                    : profileName,
+                onEnd: () => _requestEndSession(context, cubit),
+              )
+            : _IdleSessionBar(
+                key: const ValueKey('session-idle'),
+                state: state,
+                profileName: profileName,
+                onProfileChanged: (id) {
+                  if (id != null) cubit.selectProfile(id);
+                },
+                onDurationChanged: cubit.setSessionDurationMins,
+                onStart: () => requestStartSession(context),
+              );
+
+        return AnimatedSwitcher(
+          duration:
+              reduce ? Duration.zero : const Duration(milliseconds: 220),
+          switchInCurve: const Cubic(0.2, 0, 0, 1),
+          switchOutCurve: const Cubic(0.2, 0, 0, 1),
+          transitionBuilder: (c, anim) => FadeTransition(
+            opacity: anim,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, -0.04),
+                end: Offset.zero,
+              ).animate(anim),
+              child: c,
+            ),
           ),
-          child: Row(
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+class _IdleSessionBar extends StatelessWidget {
+  const _IdleSessionBar({
+    super.key,
+    required this.state,
+    required this.profileName,
+    required this.onProfileChanged,
+    required this.onDurationChanged,
+    required this.onStart,
+  });
+
+  final ShieldState state;
+  final String profileName;
+  final ValueChanged<String?> onProfileChanged;
+  final ValueChanged<int> onDurationChanged;
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: AtShieldColors.borderSubtle),
+        ),
+      ),
+      child: Row(
+        children: [
+          _FieldChip(
+            label: s.activeSession,
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: state.activeProfileId,
+                isDense: true,
+                dropdownColor: AtShieldColors.surface2,
+                style: const TextStyle(
+                  color: AtShieldColors.text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+                items: state.profiles
+                    .map(
+                      (p) => DropdownMenuItem(
+                        value: p.id,
+                        child: Text(s.profileLabel(p.name)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: onProfileChanged,
+                hint: Text(s.profileLabel(profileName)),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          _FieldChip(
+            label: s.duration,
+            child: _DurationPicker(
+              minutes: state.sessionDurationMins,
+              onChanged: onDurationChanged,
+            ),
+          ),
+          const Spacer(),
+          AtRedButton(
+            label: s.startSession,
+            icon: Icons.play_arrow_rounded,
+            onPressed: onStart,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActiveSessionBar extends StatelessWidget {
+  const _ActiveSessionBar({
+    super.key,
+    required this.session,
+    required this.profileName,
+    required this.onEnd,
+  });
+
+  final FocusSession session;
+  final String profileName;
+  final VoidCallback onEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = session.durationSecs == 0
+        ? 0.0
+        : (session.remainingSecs / session.durationSecs).clamp(0.0, 1.0);
+    final reduce = MediaQuery.disableAnimationsOf(context);
+
+    return Container(
+      height: 64,
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+      decoration: BoxDecoration(
+        color: Color.lerp(AtShieldColors.surface, AtShieldColors.bg, 0.3),
+        border: const Border(
+          bottom: BorderSide(color: AtShieldColors.borderSubtle),
+        ),
+      ),
+      child: Stack(
+        children: [
+          Row(
             children: [
               Expanded(
                 child: Row(
                   children: [
-                    _SessionCard(
-                      title: s.activeSession,
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: state.activeProfileId,
-                          dropdownColor: AtShieldColors.surface2,
-                          items: state.profiles
-                              .map(
-                                (p) => DropdownMenuItem(
-                                  value: p.id,
-                                  child: Text(s.profileLabel(p.name)),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: session != null
-                              ? null
-                              : (id) {
-                                  if (id != null) cubit.selectProfile(id);
-                                },
-                          hint: Text(s.profileLabel(profileName)),
-                        ),
+                    _LiveDot(),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            s.activeSession.toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.08,
+                              color: AtShieldColors.muted,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            profileName,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AtShieldColors.text,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    if (session == null)
-                      _SessionCard(
-                        title: s.duration,
-                        child: _DurationPicker(
-                          minutes: state.sessionDurationMins,
-                          onChanged: cubit.setSessionDurationMins,
-                        ),
-                      )
-                    else
-                      _SessionCard(
-                        title: s.timeRemaining,
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 36,
-                              height: 36,
-                              child: CircularProgressIndicator(
-                                value: progress.clamp(0.0, 1.0),
-                                strokeWidth: 3,
-                                color: AtShieldColors.accent,
-                                backgroundColor: AtShieldColors.border,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              remaining,
-                              style: const TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                   ],
                 ),
               ),
-              if (session == null) ...[
-                AtRedButton(
-                  label: s.startSession,
-                  icon: Icons.play_arrow,
-                  onPressed: () => requestStartSession(context),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: CustomPaint(
+                      painter: _RingPainter(progress: remaining),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _TickingClock(
+                        label: session.remainingLabel,
+                        tickKey: session.remainingSecs,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        s.timeRemaining.toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.08,
+                          color: AtShieldColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: AtRedButton(
+                    label: s.endSession,
+                    ghost: true,
+                    icon: Icons.stop_rounded,
+                    onPressed: onEnd,
+                  ),
                 ),
-              ] else ...[
-                AtRedButton(
-                  label: s.endSession,
-                  icon: Icons.stop,
-                  outlined: true,
-                  onPressed: () => _requestEndSession(context, cubit),
+              ),
+            ],
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: remaining.clamp(0.0, 1.0),
+                child: AnimatedContainer(
+                  duration: reduce
+                      ? Duration.zero
+                      : const Duration(milliseconds: 900),
+                  curve: Curves.linear,
+                  height: 2,
+                  color: AtShieldColors.accent,
                 ),
-              ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tick suave a cada segundo (opacity + 1px), como no HTML `.time.is-tick`.
+class _TickingClock extends StatelessWidget {
+  const _TickingClock({required this.label, required this.tickKey});
+
+  final String label;
+  final int tickKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    return AnimatedSwitcher(
+      duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, anim) {
+        return FadeTransition(
+          opacity: Tween<double>(begin: 0.55, end: 1).animate(anim),
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.08),
+              end: Offset.zero,
+            ).animate(anim),
+            child: child,
+          ),
+        );
+      },
+      child: Text(
+        label,
+        key: ValueKey(tickKey),
+        style: AtShieldTheme.mono.copyWith(
+          fontSize: 28,
+          fontWeight: FontWeight.w500,
+          letterSpacing: -0.03,
+          height: 1,
+          fontFeatures: const [FontFeature.tabularFigures()],
+          color: AtShieldColors.text,
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveDot extends StatefulWidget {
+  @override
+  State<_LiveDot> createState() => _LiveDotState();
+}
+
+class _LiveDotState extends State<_LiveDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    final reduce = WidgetsBinding.instance.platformDispatcher
+        .accessibilityFeatures.reduceMotion;
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+    if (!reduce) _c.repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        final t = Curves.easeOut.transform(_c.value);
+        return Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: AtShieldColors.success,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: AtShieldColors.success.withValues(alpha: 0.4 * (1 - t)),
+                blurRadius: 0,
+                spreadRadius: 8 * t,
+              ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  _RingPainter({required this.progress});
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.shortestSide - 3) / 2;
+    final track = Paint()
+      ..color = AtShieldColors.border
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    final arc = Paint()
+      ..color = AtShieldColors.accent
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawCircle(center, radius, track);
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -1.57079632679, // -90°
+      6.28318530718 * progress.clamp(0.0, 1.0),
+      false,
+      arc,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter old) => old.progress != progress;
+}
+
+class _FieldChip extends StatelessWidget {
+  const _FieldChip({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AtShieldColors.surface,
+        borderRadius: BorderRadius.circular(AtShieldTheme.radiusSm),
+        border: Border.all(color: AtShieldColors.borderSubtle),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 10,
+              letterSpacing: 0.08,
+              fontWeight: FontWeight.w600,
+              color: AtShieldColors.muted,
+            ),
+          ),
+          child,
+        ],
+      ),
     );
   }
 }
@@ -151,6 +471,7 @@ Future<void> _requestEndSession(
   if (confirm != true || !context.mounted) return;
 
   final prefs = await LocalPrefs.open();
+  if (!context.mounted) return;
   final pinOn =
       prefs.pinEnabled && prefs.pin != null && prefs.pin!.isNotEmpty;
   if (pinOn) {
@@ -232,7 +553,13 @@ class _DurationPicker extends StatelessWidget {
     return DropdownButtonHideUnderline(
       child: DropdownButton<int>(
         value: value,
+        isDense: true,
         dropdownColor: AtShieldColors.surface2,
+        style: const TextStyle(
+          color: AtShieldColors.text,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
         items: [
           ..._durationPresets.map(
             (m) => DropdownMenuItem(value: m, child: Text(_label(m))),
@@ -258,7 +585,6 @@ class _DurationPicker extends StatelessWidget {
   }
 }
 
-/// Dial clock → duração (horas + minutos).
 Future<int?> _askDurationClock(BuildContext context, int currentMins) async {
   final clamped = currentMins.clamp(1, 23 * 60 + 59);
   final initial = TimeOfDay(
@@ -313,39 +639,4 @@ Future<int?> _askDurationClock(BuildContext context, int currentMins) async {
   final total = picked.hour * 60 + picked.minute;
   if (total < 1) return 1;
   return total.clamp(1, 24 * 60);
-}
-
-class _SessionCard extends StatelessWidget {
-  const _SessionCard({required this.title, required this.child});
-
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AtShieldColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AtShieldColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 10,
-              letterSpacing: 0.14,
-              fontWeight: FontWeight.w700,
-              color: AtShieldColors.muted,
-            ),
-          ),
-          const SizedBox(height: 6),
-          child,
-        ],
-      ),
-    );
-  }
 }

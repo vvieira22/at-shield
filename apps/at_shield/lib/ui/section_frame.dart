@@ -72,7 +72,7 @@ class SurfaceCard extends StatelessWidget {
       padding: padding ?? const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AtShieldColors.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AtShieldTheme.radius),
         border: Border.all(color: AtShieldColors.border),
       ),
       child: child,

@@ -69,6 +69,16 @@ void FlutterWindow::SetupWindowChannel() {
           result->Success();
           return;
         }
+        if (call.method_name() == "hideToTray") {
+          this->HideToTray();
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "showFromTray") {
+          this->RestoreFromTray();
+          result->Success();
+          return;
+        }
         if (call.method_name() == "setTrayTip") {
           const auto* args = std::get_if<std::string>(call.arguments());
           if (args) {
@@ -86,8 +96,22 @@ void FlutterWindow::RequestQuit() {
     QuitApp();
     return;
   }
-  // Flutter shows a confirm dialog when a session is active, then calls "quit".
-  window_channel_->InvokeMethod("closeRequested", nullptr);
+  // Flutter: session confirm, or hide-to-tray when idle.
+  window_channel_->InvokeMethod(
+      "closeRequested",
+      std::make_unique<flutter::EncodableValue>(std::string("close")));
+}
+
+void FlutterWindow::RequestExit() {
+  // Tray "Sair" with a hidden window: show first or the confirm dialog is invisible.
+  RestoreFromTray();
+  if (!window_channel_) {
+    QuitApp();
+    return;
+  }
+  window_channel_->InvokeMethod(
+      "closeRequested",
+      std::make_unique<flutter::EncodableValue>(std::string("exit")));
 }
 
 void FlutterWindow::OnDestroy() {

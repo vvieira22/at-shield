@@ -38,7 +38,7 @@ class _HistoryPanelState extends State<HistoryPanel> {
               label: s.clear,
               icon: Icons.delete_outline,
               dense: true,
-              outlined: true,
+              ghost: true,
               onPressed: state.sessionHistory.isEmpty
                   ? null
                   : () => _confirmClear(context),
