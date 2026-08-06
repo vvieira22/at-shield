@@ -38,9 +38,24 @@ if (Test-Path $svcMain) {
   else { Fail 'service missing --uninstall-cleanup flag' }
   if ($txt -match 'AtShieldService') { Ok 'service name AtShieldService' }
   else { Fail 'service name AtShieldService not found' }
+  if ($txt -match 'crashlog::init') { Ok 'service crashlog::init' }
+  else { Fail 'service missing crashlog::init' }
 } else {
   Fail 'missing at_shield_service main.rs'
 }
+
+$wxsTxt = if (Test-Path $wxs) { Get-Content -LiteralPath $wxs -Raw } else { '' }
+if ($wxsTxt -match 'LogsFolder') { Ok 'installer LogsFolder' }
+else { Fail 'installer missing LogsFolder' }
+if ($wxsTxt -match 'WixUI_Minimal') { Ok 'installer WixUI_Minimal' }
+else { Fail 'installer missing WixUI_Minimal' }
+if ($wxsTxt -match 'UpgradeConfirmDlg') { Ok 'installer UpgradeConfirmDlg' }
+else { Fail 'installer missing UpgradeConfirmDlg' }
+if ($wxsTxt -match 'LaunchApplication') { Ok 'installer LaunchApplication' }
+else { Fail 'installer missing LaunchApplication' }
+
+$license = Join-Path $RepoRoot 'installer\License.rtf'
+if (Test-Path $license) { Ok 'installer\License.rtf' } else { Fail 'missing installer\License.rtf' }
 
 if ($StagingRoot) {
   if (-not (Test-Path $StagingRoot)) { Fail "staging missing: $StagingRoot" }
