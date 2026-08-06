@@ -220,6 +220,40 @@ class SessionRecord {
       endedReason == 'timer' ? s.reasonTimer : s.reasonManual;
 }
 
+class InterruptedSession {
+  InterruptedSession({
+    required this.profileId,
+    required this.profileName,
+    required this.remainingSecs,
+    required this.durationSecs,
+    required this.startedAt,
+    required this.interruptedAt,
+  });
+
+  final String profileId;
+  final String profileName;
+  final int remainingSecs;
+  final int durationSecs;
+  final int startedAt;
+  final int interruptedAt;
+
+  factory InterruptedSession.fromJson(Map<String, dynamic> j) =>
+      InterruptedSession(
+        profileId: j['profile_id'] as String? ?? '',
+        profileName: j['profile_name'] as String? ?? '',
+        remainingSecs: (j['remaining_secs'] as num?)?.toInt() ?? 0,
+        durationSecs: (j['duration_secs'] as num?)?.toInt() ?? 0,
+        startedAt: (j['started_at'] as num?)?.toInt() ?? 0,
+        interruptedAt: (j['interrupted_at'] as num?)?.toInt() ?? 0,
+      );
+
+  String get remainingLabel {
+    final m = remainingSecs ~/ 60;
+    final sec = remainingSecs % 60;
+    return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  }
+}
+
 @immutable
 class ProfileStats {
   const ProfileStats({this.total = 0, this.enabled = 0});
@@ -245,6 +279,7 @@ class ShieldState {
     this.query = '',
     this.error,
     this.lastSummary,
+    this.interruptedSession,
     this.sessionHistory = const [],
     this.sessionDurationMins = 15,
   });
@@ -266,6 +301,8 @@ class ShieldState {
   final String? error;
   /// Set when a session ends — UI shows summary then clears.
   final SessionRecord? lastSummary;
+  /// Parked after UI kill — offer restore once.
+  final InterruptedSession? interruptedSession;
   final List<SessionRecord> sessionHistory;
   /// Planned duration when starting the next session.
   final int sessionDurationMins;
@@ -309,6 +346,8 @@ class ShieldState {
     bool clearError = false,
     SessionRecord? lastSummary,
     bool clearLastSummary = false,
+    InterruptedSession? interruptedSession,
+    bool clearInterrupted = false,
     List<SessionRecord>? sessionHistory,
     int? sessionDurationMins,
   }) =>
@@ -330,6 +369,9 @@ class ShieldState {
         error: clearError ? null : (error ?? this.error),
         lastSummary:
             clearLastSummary ? null : (lastSummary ?? this.lastSummary),
+        interruptedSession: clearInterrupted
+            ? null
+            : (interruptedSession ?? this.interruptedSession),
         sessionHistory: sessionHistory ?? this.sessionHistory,
         sessionDurationMins: sessionDurationMins ?? this.sessionDurationMins,
       );

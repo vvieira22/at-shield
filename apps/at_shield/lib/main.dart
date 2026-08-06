@@ -61,9 +61,19 @@ class _AtShieldAppState extends State<AtShieldApp> {
   Future<dynamic> _onWindowCall(MethodCall call) async {
     if (call.method != 'closeRequested') return null;
 
-    final ctx = _navKey.currentContext;
+    final reason = call.arguments is String ? call.arguments as String : 'close';
     final sessionOn = _cubit.state.session != null;
 
+    // Sair da bandeja / sessão ativa: trazer a janela pra frente antes do diálogo.
+    if (reason == 'exit' || sessionOn) {
+      try {
+        await _windowChannel.invokeMethod<void>('showFromTray');
+      } catch (_) {}
+      // Deixa o frame da janela aparecer antes do modal.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+
+    final ctx = _navKey.currentContext;
     if (sessionOn && ctx != null && ctx.mounted) {
       final ok = await showDialog<bool>(
         context: ctx,
@@ -86,8 +96,14 @@ class _AtShieldAppState extends State<AtShieldApp> {
         ),
       );
       if (ok != true) return null;
+    } else if (reason != 'exit' && !sessionOn && _cubit.minimizeToTray) {
+      // X / taskbar close sem sessão: pode ir pra bandeja.
+      await _windowChannel.invokeMethod<void>('hideToTray');
+      return null;
     }
 
+    // Solta a rede ANTES de destruir a janela (dispose pode perder a corrida).
+    await _cubit.disarmForQuit();
     await _windowChannel.invokeMethod<void>('quit');
     return null;
   }

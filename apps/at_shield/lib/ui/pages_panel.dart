@@ -75,7 +75,7 @@ class _PagesPanelState extends State<PagesPanel> {
           label: s.browseHtml,
           icon: Icons.folder_open,
           dense: true,
-          outlined: true,
+          ghost: true,
           onPressed: () async {
             final path = await pickHtmlFile();
             if (path == null || !mounted) return;
@@ -155,7 +155,7 @@ class _PagesPanelState extends State<PagesPanel> {
                       AtRedButton(
                         label: s.preview,
                         dense: true,
-                        outlined: true,
+                        ghost: true,
                         onPressed: () =>
                             openPagePreview(p.path ?? p.name),
                       ),
@@ -196,7 +196,7 @@ class _PagesPanelState extends State<PagesPanel> {
                       AtRedButton(
                         label: s.copyPath,
                         dense: true,
-                        outlined: true,
+                        ghost: true,
                         onPressed: () async {
                           await Clipboard.setData(
                             ClipboardData(text: _picked!),

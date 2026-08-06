@@ -9,8 +9,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-/// If the UI stops pinging for this long during a session, tear protection down.
-const UI_HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(12);
+/// Heartbeat backup if PID watch is unavailable. Primary reap is UI process death.
+const UI_HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn now_unix() -> i64 {
     SystemTime::now()
@@ -57,6 +57,37 @@ pub fn normalize_domain(raw: &str) -> String {
     s.trim_end_matches('.').to_string()
 }
 
+/// True while the given OS process is still running.
+fn ui_process_alive(pid: u32) -> bool {
+    #[cfg(windows)]
+    {
+        // ponytail: raw kernel32 — avoid windows crate in core; false = treat as gone → purge
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut core::ffi::c_void;
+            fn GetExitCodeProcess(handle: *mut core::ffi::c_void, code: *mut u32) -> i32;
+            fn CloseHandle(handle: *mut core::ffi::c_void) -> i32;
+        }
+        const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+        const STILL_ACTIVE: u32 = 259;
+        unsafe {
+            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if h.is_null() {
+                return false;
+            }
+            let mut code = 0u32;
+            let ok = GetExitCodeProcess(h, &mut code);
+            CloseHandle(h);
+            ok != 0 && code == STILL_ACTIVE
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
+        true
+    }
+}
+
 /// Domains that are the same product (block/unblock together).
 fn domain_aliases(domain: &str) -> &'static [&'static str] {
     match domain {
@@ -86,6 +117,8 @@ pub struct Engine {
     pending_summary: Mutex<Option<SessionRecord>>,
     /// Last time the desktop UI checked in (heartbeat / health / get_session).
     ui_heartbeat: Mutex<Option<Instant>>,
+    /// Desktop UI OS pid — when that process dies, purge immediately.
+    ui_pid: Mutex<Option<u32>>,
 }
 
 impl Engine {
@@ -98,6 +131,7 @@ impl Engine {
             session: Mutex::new(None),
             pending_summary: Mutex::new(None),
             ui_heartbeat: Mutex::new(None),
+            ui_pid: Mutex::new(None),
         })
     }
 
@@ -107,7 +141,13 @@ impl Engine {
         let _ = thread::Builder::new()
             .name("at-shield-ui-watchdog".into())
             .spawn(move || loop {
-                thread::sleep(Duration::from_secs(1));
+                // Faster while a session is live — Task Manager kill must unblock ASAP.
+                let tick = if eng.session.lock().is_some() {
+                    Duration::from_millis(250)
+                } else {
+                    Duration::from_secs(1)
+                };
+                thread::sleep(tick);
                 eng.reap_if_ui_gone();
             });
     }
@@ -116,22 +156,93 @@ impl Engine {
         *self.ui_heartbeat.lock() = Some(Instant::now());
     }
 
+    fn note_ui_pid(&self, pid: u32) {
+        if pid == 0 {
+            return;
+        }
+        *self.ui_pid.lock() = Some(pid);
+    }
+
+    fn ui_is_gone(&self) -> bool {
+        if let Some(pid) = *self.ui_pid.lock() {
+            if !ui_process_alive(pid) {
+                return true;
+            }
+        }
+        match *self.ui_heartbeat.lock() {
+            Some(last) => last.elapsed() > UI_HEARTBEAT_TIMEOUT,
+            None => false,
+        }
+    }
+
     fn reap_if_ui_gone(&self) {
-        if self.session.lock().is_none() {
+        if !self.ui_is_gone() {
             return;
         }
-        let Some(last) = *self.ui_heartbeat.lock() else {
+        if self.session.lock().is_some() {
+            eprintln!(
+                "[at-shield] UI sumiu — soltando rede e estacionando sessão pra restaurar"
+            );
+            self.park_session_for_restore();
             return;
+        }
+        // Crash mid-clear or armed leftovers with no live session.
+        if !self.active.lock().is_empty() || self.filter.network_armed() {
+            eprintln!("[at-shield] UI sumiu — purge de rede órfã");
+            let _ = self.clear_network();
+        }
+        // Dead pid sticky until a new UI registers.
+        *self.ui_pid.lock() = None;
+        *self.ui_heartbeat.lock() = None;
+    }
+
+    /// Clear blocks immediately, persist remaining timer for optional restore.
+    fn park_session_for_restore(&self) {
+        let sess = {
+            let mut g = self.session.lock();
+            let Some(mut sess) = g.take() else {
+                return;
+            };
+            Self::refresh_session_clock(&mut sess);
+            sess
         };
-        if last.elapsed() <= UI_HEARTBEAT_TIMEOUT {
+        // Unblock first — never leave the machine locked without a UI.
+        let _ = self.clear_network();
+        *self.ui_pid.lock() = None;
+        *self.ui_heartbeat.lock() = None;
+        let _ = self.pending_summary.lock().take();
+        if sess.remaining_secs == 0 {
+            let _ = self.store.clear_live_checkpoint();
             return;
         }
-        eprintln!(
-            "[at-shield] UI sumiu (>{}s) — encerrando sessão e soltando rede",
-            UI_HEARTBEAT_TIMEOUT.as_secs()
-        );
-        let _ = self.finish_session("ui_gone");
-        let _ = self.pending_summary.lock().take();
+        let parked = InterruptedSession {
+            profile_id: sess.profile_id,
+            profile_name: sess.profile_name,
+            remaining_secs: sess.remaining_secs,
+            duration_secs: sess.duration_secs,
+            started_at: sess.started_at,
+            interrupted_at: now_unix(),
+        };
+        let _ = self.store.clear_live_checkpoint();
+        if let Err(e) = self.store.set_interrupted_session(&parked) {
+            eprintln!("[at-shield] falha ao estacionar sessão: {e}");
+        } else {
+            eprintln!(
+                "[at-shield] sessão estacionada: {} · {}s restantes",
+                parked.profile_name, parked.remaining_secs
+            );
+        }
+    }
+
+    fn checkpoint_live(sess: &LiveSession) -> InterruptedSession {
+        InterruptedSession {
+            profile_id: sess.profile_id.clone(),
+            profile_name: sess.profile_name.clone(),
+            remaining_secs: sess.remaining_secs,
+            duration_secs: sess.duration_secs,
+            started_at: sess.started_at,
+            interrupted_at: now_unix(),
+        }
     }
 
     /// Migrate + wipe leftover hosts. Blocks only start with a session.
@@ -139,6 +250,18 @@ impl Engine {
     pub fn warm_protection(&self) -> Result<(), String> {
         self.migrate_bad_domains()?;
         let _ = self.store.purge_session_history_older_than(30 * 24 * 60 * 60);
+        // Service was killed mid-session: promote live checkpoint → restore offer.
+        if self.session.lock().is_none() {
+            if let Ok(Some(live)) = self.store.take_live_checkpoint() {
+                if live.remaining_secs > 0 {
+                    let _ = self.store.set_interrupted_session(&live);
+                    eprintln!(
+                        "[at-shield] checkpoint vivo → sessão estacionada ({}s)",
+                        live.remaining_secs
+                    );
+                }
+            }
+        }
         self.clear_network()
     }
 }
@@ -146,8 +269,11 @@ impl Engine {
 impl Drop for Engine {
     fn drop(&mut self) {
         // Closing the service must never leave hosts/WFP armed.
-        let _ = self.session.lock().take();
-        let _ = self.clear_network();
+        if self.session.lock().is_some() {
+            self.park_session_for_restore();
+        } else {
+            let _ = self.clear_network();
+        }
     }
 }
 
@@ -280,6 +406,7 @@ impl Engine {
             Self::refresh_session_clock(&mut sess);
             sess
         };
+        let _ = self.store.clear_live_checkpoint();
         let _ = self.clear_network();
         let ended_at = now_unix();
         let elapsed_secs = (ended_at - sess.started_at).max(0) as u64;
@@ -321,6 +448,7 @@ impl Engine {
                 self.finish_session("timer");
                 return None;
             }
+            let _ = self.store.set_live_checkpoint(&Self::checkpoint_live(sess));
             Some(FocusSession {
                 profile_id: sess.profile_id.clone(),
                 profile_name: sess.profile_name.clone(),
@@ -340,7 +468,10 @@ impl Engine {
 
     fn handle_inner(&self, cmd: Command) -> Result<Response, String> {
         Ok(match cmd {
-            Command::Health => {
+            Command::Health { ui_pid } => {
+                if let Some(pid) = ui_pid {
+                    self.note_ui_pid(pid);
+                }
                 self.touch_ui();
                 let enabled_sites = self
                     .store
@@ -471,6 +602,8 @@ impl Engine {
                     .into_iter()
                     .find(|p| p.id == profile_id)
                     .ok_or_else(|| format!("profile not found: {profile_id}"))?;
+                // Fresh start replaces any parked restore offer.
+                let _ = self.store.clear_interrupted_session();
                 // apply marked sites — don't abort session if WFP/hosts need Admin
                 if let Err(e) = self.apply_profile_network(&profile_id) {
                     eprintln!("[at-shield] apply on session start: {e}");
@@ -478,7 +611,7 @@ impl Engine {
                 self.filter.reset_block_hits();
                 *self.pending_summary.lock() = None;
                 self.touch_ui();
-                *self.session.lock() = Some(LiveSession {
+                let live = LiveSession {
                     profile_id: profile.id.clone(),
                     profile_name: profile.name.clone(),
                     state: SessionState::Running,
@@ -486,10 +619,13 @@ impl Engine {
                     remaining_secs: duration_secs,
                     tick_at: Instant::now(),
                     started_at: now_unix(),
-                });
+                };
+                let _ = self.store.set_live_checkpoint(&Self::checkpoint_live(&live));
+                *self.session.lock() = Some(live);
                 Response::Session(self.snapshot_session())
             }
             Command::EndSession => {
+                let _ = self.store.clear_interrupted_session();
                 let summary = self.finish_session("manual");
                 // consume pending — Flutter already got the summary in this response
                 let _ = self.pending_summary.lock().take();
@@ -511,6 +647,44 @@ impl Engine {
             }
             Command::UiHeartbeat => {
                 self.touch_ui();
+                Response::Empty
+            }
+            Command::GetInterruptedSession => {
+                Response::InterruptedSession(self.store.get_interrupted_session()?)
+            }
+            Command::RestoreInterruptedSession => {
+                if self.session.lock().is_some() {
+                    return Err("já tem sessão ativa — encerre antes".into());
+                }
+                let Some(parked) = self.store.get_interrupted_session()? else {
+                    return Err("nenhuma sessão interrompida".into());
+                };
+                if parked.remaining_secs == 0 {
+                    let _ = self.store.clear_interrupted_session();
+                    return Err("sessão interrompida já expirou".into());
+                }
+                if let Err(e) = self.apply_profile_network(&parked.profile_id) {
+                    eprintln!("[at-shield] apply on restore: {e}");
+                }
+                self.filter.reset_block_hits();
+                *self.pending_summary.lock() = None;
+                self.touch_ui();
+                let live = LiveSession {
+                    profile_id: parked.profile_id,
+                    profile_name: parked.profile_name,
+                    state: SessionState::Running,
+                    duration_secs: parked.duration_secs,
+                    remaining_secs: parked.remaining_secs,
+                    tick_at: Instant::now(),
+                    started_at: parked.started_at,
+                };
+                let _ = self.store.set_live_checkpoint(&Self::checkpoint_live(&live));
+                *self.session.lock() = Some(live);
+                let _ = self.store.clear_interrupted_session();
+                Response::Session(self.snapshot_session())
+            }
+            Command::DiscardInterruptedSession => {
+                let _ = self.store.clear_interrupted_session();
                 Response::Empty
             }
         })
@@ -728,10 +902,95 @@ mod tests {
         *eng.ui_heartbeat.lock() = Some(Instant::now() - Duration::from_secs(30));
         eng.reap_if_ui_gone();
         assert!(eng.snapshot_session().is_none());
+        match eng.handle(Command::GetInterruptedSession) {
+            Response::InterruptedSession(Some(i)) => {
+                assert_eq!(i.profile_id, "profile-estudo");
+                assert!(i.remaining_secs > 0 && i.remaining_secs <= 600);
+            }
+            other => panic!("expected parked session, got {other:?}"),
+        }
         match eng.handle(Command::PopSessionSummary) {
             Response::SessionSummary(None) => {}
             other => panic!("ui_gone should not leave summary dialog, got {other:?}"),
         }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn dead_ui_pid_ends_session_immediately() {
+        let dir = std::env::temp_dir().join(format!("at-shield-pid-{}", uuid::Uuid::new_v4()));
+        let store = Store::open(dir.join("t.db")).unwrap();
+        let filter = Arc::new(NoopFilter::default());
+        let eng = Engine::new(store, filter).unwrap();
+        eng.warm_protection().unwrap();
+        eng.handle(Command::StartSession {
+            profile_id: "profile-estudo".into(),
+            duration_secs: 600,
+        });
+        // Fresh heartbeat would keep old logic alive — dead pid must still reap.
+        eng.touch_ui();
+        eng.note_ui_pid(0xFFFF_FFFE); // almost certainly not a live process
+        eng.reap_if_ui_gone();
+        assert!(eng.snapshot_session().is_none());
+        match eng.handle(Command::GetInterruptedSession) {
+            Response::InterruptedSession(Some(_)) => {}
+            other => panic!("expected parked session, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn restore_interrupted_session_rearms() {
+        let dir = std::env::temp_dir().join(format!("at-shield-restore-{}", uuid::Uuid::new_v4()));
+        let store = Store::open(dir.join("t.db")).unwrap();
+        let filter = Arc::new(NoopFilter::default());
+        let eng = Engine::new(store, filter.clone()).unwrap();
+        eng.warm_protection().unwrap();
+        eng.handle(Command::StartSession {
+            profile_id: "profile-estudo".into(),
+            duration_secs: 600,
+        });
+        *eng.ui_heartbeat.lock() = Some(Instant::now() - Duration::from_secs(30));
+        eng.reap_if_ui_gone();
+        assert!(filter.applied.lock().is_empty());
+        match eng.handle(Command::RestoreInterruptedSession) {
+            Response::Session(Some(s)) => {
+                assert_eq!(s.profile_id, "profile-estudo");
+                assert!(s.remaining_secs > 0 && s.remaining_secs <= 600);
+                assert_eq!(s.duration_secs, 600);
+            }
+            other => panic!("expected restored session, got {other:?}"),
+        }
+        assert!(!filter.applied.lock().is_empty());
+        match eng.handle(Command::GetInterruptedSession) {
+            Response::InterruptedSession(None) => {}
+            other => panic!("parked should be cleared after restore, got {other:?}"),
+        }
+        eng.handle(Command::EndSession);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn discard_interrupted_session_stays_clean() {
+        let dir = std::env::temp_dir().join(format!("at-shield-discard-{}", uuid::Uuid::new_v4()));
+        let store = Store::open(dir.join("t.db")).unwrap();
+        let filter = Arc::new(NoopFilter::default());
+        let eng = Engine::new(store, filter.clone()).unwrap();
+        eng.warm_protection().unwrap();
+        eng.handle(Command::StartSession {
+            profile_id: "profile-estudo".into(),
+            duration_secs: 600,
+        });
+        *eng.ui_heartbeat.lock() = Some(Instant::now() - Duration::from_secs(30));
+        eng.reap_if_ui_gone();
+        eng.handle(Command::DiscardInterruptedSession);
+        match eng.handle(Command::GetInterruptedSession) {
+            Response::InterruptedSession(None) => {}
+            other => panic!("expected none, got {other:?}"),
+        }
+        assert!(eng.snapshot_session().is_none());
+        assert!(filter.applied.lock().is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 

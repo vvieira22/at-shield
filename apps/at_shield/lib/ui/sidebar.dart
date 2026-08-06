@@ -16,30 +16,36 @@ class AppSidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 220,
-      color: AtShieldColors.sidebar,
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+      decoration: const BoxDecoration(
+        color: AtShieldColors.sidebar,
+        border: Border(
+          right: BorderSide(color: AtShieldColors.borderSubtle),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AtShieldTheme.radius),
                 child: Image.asset(
                   'assets/icon.png',
-                  width: 68,
-                  height: 68,
+                  width: 48,
+                  height: 48,
                   fit: BoxFit.cover,
+                  filterQuality: FilterQuality.high,
                   errorBuilder: (_, _, _) => Container(
-                    width: 68,
-                    height: 68,
+                    width: 48,
+                    height: 48,
                     color: AtShieldColors.accent,
                     alignment: Alignment.center,
                     child: const Text(
                       'AT',
                       style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
                       ),
                     ),
                   ),
@@ -54,7 +60,7 @@ class AppSidebar extends StatelessWidget {
                       'A.T. SHIELD',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        fontSize: 14,
+                        fontSize: 13,
                         letterSpacing: 0.06,
                       ),
                     ),
@@ -63,8 +69,9 @@ class AppSidebar extends StatelessWidget {
                       s.tagline,
                       style: const TextStyle(
                         color: AtShieldColors.muted,
-                        fontSize: 8.5,
-                        letterSpacing: 0.04,
+                        fontSize: 10,
+                        letterSpacing: 0.02,
+                        height: 1.3,
                       ),
                     ),
                   ],
@@ -76,7 +83,7 @@ class AppSidebar extends StatelessWidget {
           _NavItem(
             id: 'painel',
             label: s.navPainel,
-            icon: Icons.dashboard_outlined,
+            icon: Icons.list_alt_outlined,
             selected: section == 'painel',
             onTap: onSelect,
           ),
@@ -148,8 +155,15 @@ class AppSidebar extends StatelessWidget {
                   Text(
                     'A.T. SHIELD v${state.version}',
                     style: const TextStyle(
+                      fontFamily: 'Consolas',
+                      fontFamilyFallback: [
+                        'Cascadia Mono',
+                        'SF Mono',
+                        'monospace',
+                      ],
                       color: AtShieldColors.muted,
                       fontSize: 11,
+                      letterSpacing: 0.02,
                     ),
                   ),
                 ],
@@ -177,18 +191,18 @@ _ProtStatus _protectionStatus(ShieldState state) {
     return _ProtStatus(s.statusProtecting, AtShieldColors.success);
   }
   if (sessionOn) {
-    return _ProtStatus(s.statusSessionNeedsAdmin, const Color(0xFFEAB308));
+    return _ProtStatus(s.statusSessionNeedsAdmin, AtShieldColors.warn);
   }
   if (state.networkArmed && state.protectionActive) {
     return _ProtStatus(s.statusBlockActive, AtShieldColors.success);
   }
   if (enabled > 0 || localEnabled > 0 || state.protectionActive) {
-    return _ProtStatus(s.statusConfiguredNeedsAdmin, const Color(0xFFEAB308));
+    return _ProtStatus(s.statusConfiguredNeedsAdmin, AtShieldColors.warn);
   }
   return _ProtStatus(s.statusNoSites, AtShieldColors.muted);
 }
 
-class _NavItem extends StatelessWidget {
+class _NavItem extends StatefulWidget {
   const _NavItem({
     required this.id,
     required this.label,
@@ -204,33 +218,67 @@ class _NavItem extends StatelessWidget {
   final ValueChanged<String> onTap;
 
   @override
+  State<_NavItem> createState() => _NavItemState();
+}
+
+class _NavItemState extends State<_NavItem> {
+  bool _hover = false;
+
+  @override
   Widget build(BuildContext context) {
+    final selected = widget.selected;
+    final reduce = MediaQuery.disableAnimationsOf(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Material(
-        color: selected ? AtShieldColors.accent.withValues(alpha: 0.18) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => onTap(id),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  size: 18,
-                  color: selected ? AtShieldColors.accent : AtShieldColors.muted,
+      padding: const EdgeInsets.only(bottom: 2),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: AnimatedContainer(
+          duration:
+              reduce ? Duration.zero : const Duration(milliseconds: 140),
+          curve: const Cubic(0.2, 0, 0, 1),
+          decoration: BoxDecoration(
+            color: selected
+                ? AtShieldColors.accentDim
+                : _hover
+                    ? AtShieldColors.surface.withValues(alpha: 0.55)
+                    : Colors.transparent,
+            borderRadius: BorderRadius.circular(AtShieldTheme.radiusSm),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AtShieldTheme.radiusSm),
+              onTap: () => widget.onTap(widget.id),
+              hoverColor: Colors.transparent,
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      widget.icon,
+                      size: 18,
+                      color: selected
+                          ? AtShieldColors.text
+                          : AtShieldColors.muted,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      widget.label,
+                      style: TextStyle(
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.w500,
+                        fontSize: 13,
+                        letterSpacing: 0.01,
+                        color: selected
+                            ? AtShieldColors.text
+                            : AtShieldColors.muted,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    color: selected ? AtShieldColors.text : AtShieldColors.muted,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),

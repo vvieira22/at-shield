@@ -30,8 +30,23 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [at-shield] subindo engine (deixe a janela preta aberta — rode como Admin)...
+echo.
+choice /C SN /N /M "[at-shield] abrir console do servico no fundo? [S=sim / N=so o app]"
+if errorlevel 2 goto start_hidden
+echo [at-shield] subindo engine com console (deixe a janela preta aberta — rode como Admin)...
 start "at-shield-service" /D "%ROOT%" "%ROOT%\target\debug\at-shield-service.exe" --console
+goto wait_service
+
+:start_hidden
+echo [at-shield] subindo engine oculto (rode como Admin)...
+powershell -NoProfile -Command "Start-Process -FilePath '%ROOT%\target\debug\at-shield-service.exe' -ArgumentList '--console' -WorkingDirectory '%ROOT%' -WindowStyle Hidden"
+if errorlevel 1 (
+  echo [at-shield] falha ao iniciar servico oculto.
+  pause
+  exit /b 1
+)
+
+:wait_service
 
 echo [at-shield] aguardando IPC 127.0.0.1:47830 ...
 set /a _tries=0
