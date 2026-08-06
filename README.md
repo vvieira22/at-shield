@@ -48,6 +48,8 @@ O Windows pode alertar sobre builds sem assinatura Authenticode, e está explica
 
 Não é necessário instalar Rust, Flutter nem baixar crates no PC do usuário: o MSI já traz a UI, o serviço e as páginas.
 
+Crashes/fatais do serviço vão para `C:\Program Files\AT Shield\logs\` (`crash-*.log` / `fatal-*.log`). Em dev (`--console`), o fallback é `%ProgramData%\ATShield\logs`.
+
 Sem o serviço rodando (ou se ele não estiver elevado), a interface abre, mas o bloqueio de rede não é aplicado.
 
 Antes de abrir jogos com Vanguard, EAC, BattlEye ou Faceit, encerre a sessão e pare o serviço (ou feche o app e use `services.msc`).
