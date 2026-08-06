@@ -43,15 +43,11 @@ class ProfilesPanel extends StatelessWidget {
                     Row(
                       children: [
                         CircleAvatar(
-                          backgroundColor: active
-                              ? AtShieldColors.accent.withValues(alpha: 0.25)
-                              : AtShieldColors.surface2,
+                          backgroundColor: AtShieldColors.surface2,
                           child: Text(
                             p.name.isNotEmpty ? p.name[0].toUpperCase() : '?',
-                            style: TextStyle(
-                              color: active
-                                  ? AtShieldColors.accent
-                                  : AtShieldColors.text,
+                            style: const TextStyle(
+                              color: AtShieldColors.text,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -81,16 +77,21 @@ class ProfilesPanel extends StatelessWidget {
                                         vertical: 3,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: AtShieldColors.accent
-                                            .withValues(alpha: 0.2),
-                                        borderRadius: BorderRadius.circular(6),
+                                        color: AtShieldColors.surface2,
+                                        borderRadius: BorderRadius.circular(
+                                          AtShieldTheme.radiusSm,
+                                        ),
+                                        border: Border.all(
+                                          color: AtShieldColors.border,
+                                        ),
                                       ),
                                       child: Text(
                                         s.inUse,
-                                        style: TextStyle(
-                                          color: AtShieldColors.accent,
+                                        style: const TextStyle(
+                                          color: AtShieldColors.muted,
                                           fontSize: 11,
                                           fontWeight: FontWeight.w600,
+                                          letterSpacing: 0.02,
                                         ),
                                       ),
                                     ),

@@ -200,7 +200,6 @@ impl NetworkFilter for WindowsFilter {
         if let Some(wfp) = g.wfp.as_mut() {
             if let Err(e) = wfp.clear() {
                 eprintln!("[at-shield] WFP clear (precisa Admin): {e}");
-                self.mark_armed(false);
             }
         }
         if let Some(pages) = &self.pages {
@@ -210,7 +209,9 @@ impl NetworkFilter for WindowsFilter {
         if let Err(e) = hosts::clear() {
             eprintln!("[at-shield] hosts clear (precisa Admin): {e}");
             self.mark_armed(false);
+            return Ok(());
         }
+        self.mark_armed(false);
         Ok(())
     }
 

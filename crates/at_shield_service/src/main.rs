@@ -3,6 +3,7 @@
 //! Run: `at-shield-service --console` for foreground dev.
 //! Production: MSI registers this exe as Windows service `AtShieldService` (LocalSystem).
 
+mod crashlog;
 mod pipe;
 
 use at_shield_core::{Engine, NoopFilter, Store};
@@ -68,6 +69,8 @@ fn run_console() -> Result<(), String> {
 }
 
 fn main() {
+    crashlog::init();
+
     let args: Vec<String> = std::env::args().collect();
     let console = args.iter().any(|a| a == "--console" || a == "-c");
     let nuke = args.iter().any(|a| a == "--nuke");
@@ -83,14 +86,14 @@ fn main() {
                     std::process::exit(0);
                 }
                 Err(e) => {
-                    eprintln!("[at-shield] uninstall cleanup falhou: {e}");
+                    crashlog::fatal(&format!("uninstall cleanup falhou: {e}"));
                     std::process::exit(1);
                 }
             }
         }
         #[cfg(not(windows))]
         {
-            eprintln!("uninstall-cleanup só no Windows");
+            crashlog::fatal("uninstall-cleanup só no Windows");
             std::process::exit(1);
         }
     }
@@ -105,21 +108,21 @@ fn main() {
                     std::process::exit(0);
                 }
                 Err(e) => {
-                    eprintln!("[at-shield] NUKE falhou: {e}");
+                    crashlog::fatal(&format!("NUKE falhou: {e}"));
                     std::process::exit(1);
                 }
             }
         }
         #[cfg(not(windows))]
         {
-            eprintln!("nuke só no Windows");
+            crashlog::fatal("nuke só no Windows");
             std::process::exit(1);
         }
     }
 
     if console || !cfg!(windows) {
         if let Err(e) = run_console() {
-            eprintln!("fatal: {e}");
+            crashlog::fatal(&format!("fatal: {e}"));
             std::process::exit(1);
         }
         return;
@@ -129,7 +132,7 @@ fn main() {
     {
         // SCM dispatch when registered by the MSI; for local dev use --console.
         if let Err(e) = run_as_service() {
-            eprintln!("service dispatch failed ({e}), try --console");
+            crashlog::fatal(&format!("service dispatch failed ({e}), try --console"));
             std::process::exit(1);
         }
     }
@@ -173,19 +176,22 @@ fn run_as_service() -> Result<(), String> {
             process_id: None,
         });
 
-        if let Ok(engine) = build_engine() {
-            engine.spawn_ui_watchdog();
-            let warm = engine.clone();
-            std::thread::spawn(move || {
-                let _ = warm.warm_protection();
-            });
-            let stop3 = stop.clone();
-            let _ = std::thread::spawn(move || {
-                let _ = pipe::serve_forever_until(engine, move || *stop3.lock());
-            });
-            while !*stop.lock() {
-                std::thread::sleep(Duration::from_millis(400));
+        match build_engine() {
+            Ok(engine) => {
+                engine.spawn_ui_watchdog();
+                let warm = engine.clone();
+                std::thread::spawn(move || {
+                    let _ = warm.warm_protection();
+                });
+                let stop3 = stop.clone();
+                let _ = std::thread::spawn(move || {
+                    let _ = pipe::serve_forever_until(engine, move || *stop3.lock());
+                });
+                while !*stop.lock() {
+                    std::thread::sleep(Duration::from_millis(400));
+                }
             }
+            Err(e) => crashlog::fatal(&format!("service build_engine failed: {e}")),
         }
 
         let _ = status_handle.set_service_status(ServiceStatus {

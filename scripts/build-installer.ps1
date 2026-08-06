@@ -155,10 +155,12 @@ $wixArgs = @(
   (Join-Path $Root 'installer\AtShield.wxs'),
   (Join-Path $Gen 'UiFiles.wxs'),
   (Join-Path $Gen 'PagesFiles.wxs'),
+  '-ext', 'WixToolset.UI.wixext/7.0.0',
   '-d', "ProductVersion=$Version",
   '-d', "ProjectRoot=$Root",
   '-b', "Staging=$Staging",
   '-arch', 'x64',
+  '-culture', 'pt-BR',
   '-acceptEula', 'wix7',
   '-o', $MsiPath
 )

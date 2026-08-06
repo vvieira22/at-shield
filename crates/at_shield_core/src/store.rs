@@ -1,5 +1,6 @@
 use crate::models::*;
 use rusqlite::{params, Connection};
+use serde::{de::DeserializeOwned, Serialize};
 use std::path::{Path, PathBuf};
 
 pub struct Store {
@@ -376,5 +377,67 @@ impl Store {
             .execute("DELETE FROM session_history", [])
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    const INTERRUPTED_KEY: &'static str = "interrupted_session";
+    const LIVE_KEY: &'static str = "live_session_checkpoint";
+
+    fn get_setting_json<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, String> {
+        let c = self.conn()?;
+        let mut stmt = c
+            .prepare("SELECT value FROM settings WHERE key=?1")
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query(params![key]).map_err(|e| e.to_string())?;
+        let Some(row) = rows.next().map_err(|e| e.to_string())? else {
+            return Ok(None);
+        };
+        let raw: String = row.get(0).map_err(|e| e.to_string())?;
+        let parsed: T = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+        Ok(Some(parsed))
+    }
+
+    fn set_setting_json<T: Serialize>(&self, key: &str, value: &T) -> Result<(), String> {
+        let raw = serde_json::to_string(value).map_err(|e| e.to_string())?;
+        self.conn()?
+            .execute(
+                "INSERT INTO settings(key, value) VALUES(?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                params![key, raw],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn clear_setting(&self, key: &str) -> Result<(), String> {
+        self.conn()?
+            .execute("DELETE FROM settings WHERE key=?1", params![key])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_interrupted_session(&self) -> Result<Option<InterruptedSession>, String> {
+        self.get_setting_json(Self::INTERRUPTED_KEY)
+    }
+
+    pub fn set_interrupted_session(&self, s: &InterruptedSession) -> Result<(), String> {
+        self.set_setting_json(Self::INTERRUPTED_KEY, s)
+    }
+
+    pub fn clear_interrupted_session(&self) -> Result<(), String> {
+        self.clear_setting(Self::INTERRUPTED_KEY)
+    }
+
+    pub fn set_live_checkpoint(&self, s: &InterruptedSession) -> Result<(), String> {
+        self.set_setting_json(Self::LIVE_KEY, s)
+    }
+
+    pub fn take_live_checkpoint(&self) -> Result<Option<InterruptedSession>, String> {
+        let v = self.get_setting_json(Self::LIVE_KEY)?;
+        let _ = self.clear_setting(Self::LIVE_KEY);
+        Ok(v)
+    }
+
+    pub fn clear_live_checkpoint(&self) -> Result<(), String> {
+        self.clear_setting(Self::LIVE_KEY)
     }
 }

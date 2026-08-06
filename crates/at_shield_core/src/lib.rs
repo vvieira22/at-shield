@@ -15,7 +15,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Command {
-    Health,
+    /// Optional `ui_pid` lets the service reap the session the instant the UI process dies.
+    Health {
+        #[serde(default)]
+        ui_pid: Option<u32>,
+    },
     ListProfiles,
     ListSites { profile_id: Option<String> },
     UpsertProfile { profile: Profile },
@@ -38,6 +42,12 @@ pub enum Command {
     ClearSessionHistory,
     /// UI liveness ping — if this stops while a session is on, protection is cleared.
     UiHeartbeat,
+    /// Session parked after UI process death (blocks already cleared).
+    GetInterruptedSession,
+    /// Re-arm network and continue the parked timer.
+    RestoreInterruptedSession,
+    /// Drop the parked session — open clean.
+    DiscardInterruptedSession,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +70,7 @@ pub enum Response {
     Session(Option<FocusSession>),
     SessionSummary(Option<SessionRecord>),
     SessionHistory(Vec<SessionRecord>),
+    InterruptedSession(Option<InterruptedSession>),
     Empty,
     Error { message: String },
 }

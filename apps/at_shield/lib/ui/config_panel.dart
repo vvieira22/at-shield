@@ -55,7 +55,7 @@ class ConfigPanel extends StatelessWidget {
                           ? AtShieldColors.success
                           : (state.protectionActive ||
                                   state.enabledSitesTotal > 0)
-                              ? const Color(0xFFEAB308)
+                              ? AtShieldColors.warn
                               : AtShieldColors.muted,
                     ),
                     _kv(s.version, state.version),
@@ -77,7 +77,7 @@ class ConfigPanel extends StatelessWidget {
                           label: s.openPreview,
                           icon: Icons.open_in_browser,
                           dense: true,
-                          outlined: true,
+                          ghost: true,
                           onPressed: () => openPagePreview('foco.html'),
                         ),
                       ],
@@ -248,11 +248,13 @@ class _LangButton extends StatelessWidget {
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
         backgroundColor: selected
-            ? AtShieldColors.accent.withValues(alpha: 0.15)
+            ? AtShieldColors.accentDim
             : Colors.transparent,
         side: BorderSide(
-          color: selected ? AtShieldColors.accent : AtShieldColors.border,
+          color: selected ? AtShieldColors.border : AtShieldColors.border,
         ),
+        foregroundColor:
+            selected ? AtShieldColors.text : AtShieldColors.muted,
       ),
       child: Text(label),
     );

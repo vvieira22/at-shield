@@ -18,6 +18,7 @@ class FlutterWindow : public Win32Window {
   virtual ~FlutterWindow();
 
   void RequestQuit() override;
+  void RequestExit() override;
 
  protected:
   // Win32Window:
