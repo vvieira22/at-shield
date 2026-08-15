@@ -74,6 +74,11 @@ void FlutterWindow::SetupWindowChannel() {
           result->Success();
           return;
         }
+        if (call.method_name() == "minimize") {
+          this->MinimizeToTaskbar();
+          result->Success();
+          return;
+        }
         if (call.method_name() == "showFromTray") {
           this->RestoreFromTray();
           result->Success();

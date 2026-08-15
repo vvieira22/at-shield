@@ -33,6 +33,8 @@ class LocalPrefs {
   bool get launchWithWindows => _data['launch_with_windows'] == true;
   /// Minimize / close hide to the notification area instead of taskbar / quit.
   bool get minimizeToTray => _data['minimize_to_tray'] == true;
+  /// X / Alt+F4 minimizes instead of quitting. Missing key = on.
+  bool get closeMinimizes => _data['close_minimizes'] != false;
   /// Default focus session length (minutes).
   int get sessionDurationMins {
     final v = (_data['session_duration_mins'] as num?)?.toInt();
@@ -67,6 +69,11 @@ class LocalPrefs {
   Future<void> setMinimizeToTray(bool v) async {
     _data['minimize_to_tray'] = v;
     if (!v) _data['start_minimized'] = false;
+    await _flush();
+  }
+
+  Future<void> setCloseMinimizes(bool v) async {
+    _data['close_minimizes'] = v;
     await _flush();
   }
 

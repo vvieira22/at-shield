@@ -42,6 +42,8 @@ class AppStrings {
     required this.protectionConfiguredNeedsAdmin,
     required this.openPreview,
     required this.preferences,
+    required this.closeMinimizes,
+    required this.closeMinimizesSub,
     required this.minimizeToTray,
     required this.minimizeToTraySub,
     required this.startMinimized,
@@ -171,6 +173,9 @@ class AppStrings {
     required this.closeAppTitle,
     required this.closeAppContent,
     required this.closeAndStop,
+    required this.quitAppTitle,
+    required this.quitAppContent,
+    required this.quitAppConfirm,
     required this.restoreSessionTitle,
     required this.restoreSessionContent,
     required this.restoreSessionYes,
@@ -257,6 +262,8 @@ class AppStrings {
   final String protectionConfiguredNeedsAdmin;
   final String openPreview;
   final String preferences;
+  final String closeMinimizes;
+  final String closeMinimizesSub;
   final String minimizeToTray;
   final String minimizeToTraySub;
   final String startMinimized;
@@ -404,6 +411,9 @@ class AppStrings {
   final String closeAppTitle;
   final String closeAppContent;
   final String closeAndStop;
+  final String quitAppTitle;
+  final String quitAppContent;
+  final String quitAppConfirm;
   final String restoreSessionTitle;
   final String restoreSessionContent;
   final String restoreSessionYes;
@@ -517,9 +527,12 @@ class AppStrings {
     protectionConfiguredNeedsAdmin: 'Configurado · precisa Admin',
     openPreview: 'Abrir preview',
     preferences: 'Preferências',
+    closeMinimizes: 'Fechar minimiza a aplicação',
+    closeMinimizesSub:
+        'O botão X minimiza em vez de encerrar. Desative para confirmar a saída.',
     minimizeToTray: 'Minimizar para a bandeja',
     minimizeToTraySub:
-        'Minimizar ou fechar (X) esconde na bandeja e continua rodando',
+        'Minimizar (e o X, se fechar minimiza) esconde na bandeja e continua rodando',
     startMinimized: 'Iniciar na bandeja',
     startMinimizedSubEnabled: 'Abre direto na bandeja do sistema',
     startMinimizedSubDisabled: 'Ative "Minimizar para a bandeja" antes',
@@ -688,6 +701,11 @@ class AppStrings {
         'Tem uma sessão de proteção ativa. '
         'Se fechar agora, o bloqueio para e os sites voltam a abrir.',
     closeAndStop: 'Fechar e parar',
+    quitAppTitle: 'Sair do A.T. Shield?',
+    quitAppContent:
+        'O aplicativo será encerrado. '
+        'Você pode voltar a minimizar o X em Configurações.',
+    quitAppConfirm: 'Sair',
     restoreSessionTitle: 'Restaurar sessão?',
     restoreSessionContent:
         'A sessão "{profile}" foi interrompida ({remaining} restantes). '
@@ -761,9 +779,12 @@ class AppStrings {
     protectionConfiguredNeedsAdmin: 'Configured · needs Admin',
     openPreview: 'Open preview',
     preferences: 'Preferences',
+    closeMinimizes: 'Close minimizes the app',
+    closeMinimizesSub:
+        'The X button minimizes instead of quitting. Turn off to confirm before exit.',
     minimizeToTray: 'Minimize to tray',
     minimizeToTraySub:
-        'Minimize or close (X) hides to tray and keeps running',
+        'Minimize (and X, if close-minimizes is on) hides to the tray and keeps running',
     startMinimized: 'Start in tray',
     startMinimizedSubEnabled: 'Opens directly in the system tray',
     startMinimizedSubDisabled: 'Enable "Minimize to tray" first',
@@ -935,6 +956,11 @@ class AppStrings {
         'A protection session is active. '
         'If you close now, blocking stops and sites will open again.',
     closeAndStop: 'Close and stop',
+    quitAppTitle: 'Quit A.T. Shield?',
+    quitAppContent:
+        'The app will exit. '
+        'You can send X back to minimize in Settings.',
+    quitAppConfirm: 'Quit',
     restoreSessionTitle: 'Restore session?',
     restoreSessionContent:
         'Session "{profile}" was interrupted ({remaining} left). '

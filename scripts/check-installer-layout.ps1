@@ -47,15 +47,24 @@ if (Test-Path $svcMain) {
 $wxsTxt = if (Test-Path $wxs) { Get-Content -LiteralPath $wxs -Raw } else { '' }
 if ($wxsTxt -match 'LogsFolder') { Ok 'installer LogsFolder' }
 else { Fail 'installer missing LogsFolder' }
-if ($wxsTxt -match 'WixUI_Minimal') { Ok 'installer WixUI_Minimal' }
-else { Fail 'installer missing WixUI_Minimal' }
+if ($wxsTxt -match 'AtWelcomeDlg') { Ok 'installer AtWelcomeDlg' }
+else { Fail 'installer missing AtWelcomeDlg' }
+if ($wxsTxt -match 'AtExitDlg') { Ok 'installer AtExitDlg' }
+else { Fail 'installer missing AtExitDlg' }
 if ($wxsTxt -match 'UpgradeConfirmDlg') { Ok 'installer UpgradeConfirmDlg' }
 else { Fail 'installer missing UpgradeConfirmDlg' }
 if ($wxsTxt -match 'LaunchApplication') { Ok 'installer LaunchApplication' }
 else { Fail 'installer missing LaunchApplication' }
+if ($wxsTxt -match 'Abrir o A.T. Shield agora') { Ok 'installer launch-on-exit checkbox' }
+else { Fail 'installer missing launch-on-exit checkbox' }
 
 $license = Join-Path $RepoRoot 'installer\License.rtf'
 if (Test-Path $license) { Ok 'installer\License.rtf' } else { Fail 'missing installer\License.rtf' }
+
+foreach ($bmp in @('dialog.bmp', 'banner.bmp')) {
+  $p = Join-Path $RepoRoot "installer\bitmaps\$bmp"
+  if (Test-Path $p) { Ok "installer\bitmaps\$bmp" } else { Fail "missing installer\bitmaps\$bmp" }
+}
 
 if ($StagingRoot) {
   if (-not (Test-Path $StagingRoot)) { Fail "staging missing: $StagingRoot" }

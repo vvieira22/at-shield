@@ -3,11 +3,10 @@
   A.T. Shield per-machine MSI.
   Build via scripts\build-installer.ps1 (stages Release binaries, harvests files, wix build).
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
       Name="A.T. Shield"
-      Manufacturer="NERD"
+      Manufacturer="LCLSystems"
       Version="$(var.ProductVersion)"
       UpgradeCode="8F3C2A1B-4D5E-6F70-8192-A3B4C5D6E7F8"
       Scope="perMachine"
@@ -16,7 +15,7 @@
 
     <SummaryInformation
         Description="A.T. Shield — bloqueador de sites para sessões de foco"
-        Manufacturer="NERD" />
+        Manufacturer="LCLSystems" />
 
     <!-- Same-version rebuilds (1.0.0 → 1.0.0) still replace the previous install. -->
     <MajorUpgrade
@@ -29,16 +28,11 @@
     <Icon Id="AppIcon" SourceFile="$(var.ProjectRoot)\apps\at_shield\windows\runner\resources\app_icon.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
 
-    <!-- Finish dialog: success text + open-app checkbox (checked by default). -->
-    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
-    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Abrir o A.T. Shield agora" />
-    <SetProperty
-        Id="WIXUI_EXITDIALOGOPTIONALTEXT"
-        Value="A instalação do A.T. Shield foi concluída com sucesso."
-        After="FindRelatedProducts"
-        Sequence="ui" />
+    <Binary Id="AtShieldDialogBmp" SourceFile="$(var.ProjectRoot)\installer\bitmaps\dialog.bmp" />
+    <Binary Id="AtShieldBannerBmp" SourceFile="$(var.ProjectRoot)\installer\bitmaps\banner.bmp" />
 
-    <WixVariable Id="WixUILicenseRtf" Value="$(var.ProjectRoot)\installer\License.rtf" />
+    <!-- Finish dialog: open-app checkbox checked by default. -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
 
     <Feature Id="ProductFeature" Title="A.T. Shield" Level="1">
       <ComponentRef Id="AppExeComponent" />
@@ -137,49 +131,124 @@
         Return="ignore" />
 
     <UI>
-      <ui:WixUI Id="WixUI_Minimal" />
+      <TextStyle Id="AtTitle" FaceName="Segoe UI" Size="13" Bold="yes" />
+      <TextStyle Id="AtBody" FaceName="Segoe UI" Size="9" />
+      <TextStyle Id="AtSmall" FaceName="Segoe UI" Size="8" />
+      <Property Id="DefaultUIFont" Value="AtBody" />
 
-      <!-- Ask before replacing an existing install (MajorUpgrade still does the uninstall). -->
-      <Dialog Id="UpgradeConfirmDlg" Width="370" Height="270" Title="A.T. Shield — instalação anterior">
-        <Control
-            Id="Title"
-            Type="Text"
-            X="15"
-            Y="15"
-            Width="340"
-            Height="30"
-            Transparent="yes"
-            NoPrefix="yes"
-            Text="{\WixUI_Font_Title}Versão anterior encontrada" />
-        <Control
-            Id="Description"
-            Type="Text"
-            X="25"
-            Y="60"
-            Width="320"
-            Height="120"
-            Transparent="yes"
-            NoPrefix="yes"
-            Text="Já existe uma instalação do A.T. Shield neste computador.&#xA;&#xA;Deseja desinstalá-la e substituir por esta versão?" />
-        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
-        <Control Id="Yes" Type="PushButton" X="186" Y="243" Width="80" Height="17" Default="yes" Text="Sim">
+      <Dialog Id="AtCancelDlg" Width="260" Height="85" Title="A.T. Shield">
+        <Control Id="Text" Type="Text" X="20" Y="15" Width="220" Height="30" NoPrefix="yes"
+            Text="Cancelar a instalação do A.T. Shield?" />
+        <Control Id="Yes" Type="PushButton" X="70" Y="57" Width="70" Height="20" Default="yes" Text="Sim">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+        <Control Id="No" Type="PushButton" X="145" Y="57" Width="70" Height="20" Cancel="yes" Text="Não">
           <Publish Event="EndDialog" Value="Return" />
         </Control>
-        <Control Id="No" Type="PushButton" X="272" Y="243" Width="80" Height="17" Cancel="yes" Text="Não">
+      </Dialog>
+
+      <Dialog Id="AtWelcomeDlg" Width="370" Height="270" Title="A.T. Shield">
+        <Control Id="DialogBmp" Type="Bitmap" X="0" Y="0" Width="370" Height="234" TabSkip="yes" Text="AtShieldDialogBmp" />
+        <Control Id="Title" Type="Text" X="140" Y="24" Width="214" Height="32" Transparent="yes" NoPrefix="yes"
+            Text="{\AtTitle}A.T. Shield" />
+        <Control Id="Description" Type="Text" X="140" Y="62" Width="214" Height="90" Transparent="yes" NoPrefix="yes"
+            Text="{\AtBody}Bloqueador de sites para sessões de foco.&#xA;&#xA;O serviço de rede pede admin uma vez. A interface abre como usuário." />
+        <Control Id="License" Type="Text" X="140" Y="168" Width="214" Height="40" Transparent="yes" NoPrefix="yes"
+            Text="{\AtSmall}Ao instalar, você aceita a licença MIT incluída no pacote." />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Install" Type="PushButton" X="186" Y="243" Width="88" Height="20" Default="yes" Text="Instalar">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="280" Y="243" Width="74" Height="20" Cancel="yes" Text="Cancelar">
+          <Publish Event="SpawnDialog" Value="AtCancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="AtProgressDlg" Width="370" Height="270" Title="A.T. Shield" Modeless="yes">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="yes" Text="AtShieldBannerBmp" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Status" Type="Text" X="20" Y="64" Width="330" Height="16" NoPrefix="yes"
+            Text="{\AtTitle}Instalando…" />
+        <Control Id="ActionText" Type="Text" X="20" Y="86" Width="330" Height="16">
+          <Subscribe Event="ActionText" Attribute="Text" />
+        </Control>
+        <Control Id="ProgressBar" Type="ProgressBar" X="20" Y="114" Width="330" Height="12" ProgressBlocks="yes" Text="Progresso">
+          <Subscribe Event="SetProgress" Attribute="Progress" />
+        </Control>
+        <Control Id="Hint" Type="Text" X="20" Y="138" Width="330" Height="40" NoPrefix="yes"
+            Text="{\AtSmall}Isso leva poucos segundos. O serviço inicia automaticamente." />
+        <Control Id="Cancel" Type="PushButton" X="280" Y="243" Width="74" Height="20" Cancel="yes" Text="Cancelar">
+          <Publish Event="SpawnDialog" Value="AtCancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="AtExitDlg" Width="370" Height="270" Title="A.T. Shield">
+        <Control Id="DialogBmp" Type="Bitmap" X="0" Y="0" Width="370" Height="234" TabSkip="yes" Text="AtShieldDialogBmp" />
+        <Control Id="Title" Type="Text" X="140" Y="24" Width="214" Height="32" Transparent="yes" NoPrefix="yes"
+            Text="{\AtTitle}Instalação concluída" />
+        <Control Id="Description" Type="Text" X="140" Y="62" Width="214" Height="80" Transparent="yes" NoPrefix="yes"
+            Text="{\AtBody}O A.T. Shield está pronto. Abra o app, crie um perfil e comece uma sessão de foco." />
+        <Control Id="LaunchCheck" Type="CheckBox" X="140" Y="160" Width="214" Height="28"
+            Property="WIXUI_EXITDIALOGOPTIONALCHECKBOX" CheckBoxValue="1"
+            Text="Abrir o A.T. Shield agora" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Finish" Type="PushButton" X="186" Y="243" Width="168" Height="20" Default="yes" Cancel="yes" Text="Concluir">
+          <Publish
+              Event="DoAction"
+              Value="LaunchApplication"
+              Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = &quot;1&quot; AND NOT REMOVE" />
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="AtFatalError" Width="370" Height="270" Title="A.T. Shield">
+        <Control Id="DialogBmp" Type="Bitmap" X="0" Y="0" Width="370" Height="234" TabSkip="yes" Text="AtShieldDialogBmp" />
+        <Control Id="Title" Type="Text" X="140" Y="24" Width="214" Height="40" Transparent="yes" NoPrefix="yes"
+            Text="{\AtTitle}A instalação falhou" />
+        <Control Id="Description" Type="Text" X="140" Y="72" Width="214" Height="90" Transparent="yes" NoPrefix="yes"
+            Text="{\AtBody}O A.T. Shield não pôde ser instalado. Tente de novo como administrador." />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Finish" Type="PushButton" X="280" Y="243" Width="74" Height="20" Default="yes" Cancel="yes" Text="Fechar">
           <Publish Event="EndDialog" Value="Exit" />
         </Control>
       </Dialog>
 
-      <Publish
-          Dialog="ExitDialog"
-          Control="Finish"
-          Event="DoAction"
-          Value="LaunchApplication"
-          Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = &quot;1&quot; AND NOT Installed" />
+      <Dialog Id="AtUserExit" Width="370" Height="270" Title="A.T. Shield">
+        <Control Id="DialogBmp" Type="Bitmap" X="0" Y="0" Width="370" Height="234" TabSkip="yes" Text="AtShieldDialogBmp" />
+        <Control Id="Title" Type="Text" X="140" Y="24" Width="214" Height="40" Transparent="yes" NoPrefix="yes"
+            Text="{\AtTitle}Instalação cancelada" />
+        <Control Id="Description" Type="Text" X="140" Y="72" Width="214" Height="90" Transparent="yes" NoPrefix="yes"
+            Text="{\AtBody}Nada foi alterado neste computador." />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Finish" Type="PushButton" X="280" Y="243" Width="74" Height="20" Default="yes" Cancel="yes" Text="Fechar">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+      </Dialog>
+
+      <!-- Ask before replacing an existing install (MajorUpgrade still does the uninstall). -->
+      <Dialog Id="UpgradeConfirmDlg" Width="370" Height="270" Title="A.T. Shield">
+        <Control Id="DialogBmp" Type="Bitmap" X="0" Y="0" Width="370" Height="234" TabSkip="yes" Text="AtShieldDialogBmp" />
+        <Control Id="Title" Type="Text" X="140" Y="24" Width="214" Height="40" Transparent="yes" NoPrefix="yes"
+            Text="{\AtTitle}Versão anterior encontrada" />
+        <Control Id="Description" Type="Text" X="140" Y="72" Width="214" Height="90" Transparent="yes" NoPrefix="yes"
+            Text="{\AtBody}Já existe uma instalação neste computador. Deseja substituir por esta versão?" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Yes" Type="PushButton" X="186" Y="243" Width="80" Height="20" Default="yes" Text="Sim">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="No" Type="PushButton" X="272" Y="243" Width="82" Height="20" Cancel="yes" Text="Não">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+      </Dialog>
     </UI>
 
     <InstallUISequence>
-      <Show Dialog="UpgradeConfirmDlg" Before="WelcomeEulaDlg" Condition="WIX_UPGRADE_DETECTED AND NOT Installed" />
+      <Show Dialog="UpgradeConfirmDlg" Before="AtWelcomeDlg" Condition="WIX_UPGRADE_DETECTED AND NOT Installed" />
+      <Show Dialog="AtWelcomeDlg" Before="AtProgressDlg" Condition="NOT Installed" />
+      <Show Dialog="AtProgressDlg" Before="ExecuteAction" />
+      <Show Dialog="AtExitDlg" OnExit="success" />
+      <Show Dialog="AtFatalError" OnExit="error" />
+      <Show Dialog="AtUserExit" OnExit="cancel" />
     </InstallUISequence>
 
     <InstallExecuteSequence>

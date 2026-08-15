@@ -21,6 +21,7 @@ class ShieldCubit extends Cubit<ShieldState> {
 
   LocalPrefs? get prefs => _prefs;
   bool get minimizeToTray => _prefs?.minimizeToTray ?? false;
+  bool get closeMinimizes => _prefs?.closeMinimizes ?? true;
 
   Future<void> boot() async {
     _reconnect?.cancel();

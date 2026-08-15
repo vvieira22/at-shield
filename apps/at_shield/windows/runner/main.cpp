@@ -30,8 +30,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (!window.Create(L"A.T. Shield", origin, size)) {
     return EXIT_FAILURE;
   }
-  // Close/minimize honor Config → "Minimizar para a bandeja".
-  // Quit via tray menu "Sair" or normal close when tray is off.
+  // Close/minimize honor Config → "Fechar minimiza" (default on).
+  // Quit via tray menu "Sair" or X when that toggle is off (asks first).
   window.SetQuitOnClose(false);
 
   ::MSG msg;

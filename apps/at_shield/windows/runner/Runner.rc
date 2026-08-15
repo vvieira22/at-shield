@@ -90,11 +90,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.nerd" "\0"
+            VALUE "CompanyName", "LCLSystems" "\0"
             VALUE "FileDescription", "A.T. Shield" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "at_shield" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.nerd. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 LCLSystems. All rights reserved." "\0"
             VALUE "OriginalFilename", "at_shield.exe" "\0"
             VALUE "ProductName", "A.T. Shield" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

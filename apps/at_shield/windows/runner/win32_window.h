@@ -42,6 +42,9 @@ class Win32Window {
   /// Hide window and keep running in the notification area.
   void HideToTray();
 
+  /// Minimize to the taskbar (X when "fechar minimiza" is on).
+  void MinimizeToTaskbar();
+
   /// Show + focus window (and ensure tray icon exists).
   void RestoreFromTray();
 

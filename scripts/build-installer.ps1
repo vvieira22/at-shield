@@ -112,6 +112,9 @@ Copy-Item -Path (Join-Path $uiRelease '*') -Destination (Join-Path $Staging 'ui'
 Copy-Item -Path $serviceExe -Destination (Join-Path $Staging 'service\at-shield-service.exe') -Force
 Copy-Item -Path (Join-Path $Root 'pages\*') -Destination (Join-Path $Staging 'pages') -Recurse -Force
 
+# Brand bitmaps for the MSI wizard (dialog 493x312, banner 493x58)
+& (Join-Path $PSScriptRoot 'New-InstallerBitmaps.ps1') -RepoRoot $Root
+
 # Layout self-check (fails the build if packaging is incomplete)
 & (Join-Path $PSScriptRoot 'check-installer-layout.ps1') -StagingRoot $Staging
 if ($LASTEXITCODE -ne 0) { throw 'installer layout check failed' }
@@ -155,7 +158,6 @@ $wixArgs = @(
   (Join-Path $Root 'installer\AtShield.wxs'),
   (Join-Path $Gen 'UiFiles.wxs'),
   (Join-Path $Gen 'PagesFiles.wxs'),
-  '-ext', 'WixToolset.UI.wixext/7.0.0',
   '-d', "ProductVersion=$Version",
   '-d', "ProjectRoot=$Root",
   '-b', "Staging=$Staging",

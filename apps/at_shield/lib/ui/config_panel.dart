@@ -96,6 +96,18 @@ class ConfigPanel extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     _toggleRow(
+                      title: s.closeMinimizes,
+                      subtitle: s.closeMinimizesSub,
+                      value: prefs?.closeMinimizes ?? true,
+                      onChanged: prefs == null
+                          ? null
+                          : (v) async {
+                              await prefs!.setCloseMinimizes(v);
+                              onPrefsChanged();
+                            },
+                    ),
+                    const Divider(color: AtShieldColors.border, height: 20),
+                    _toggleRow(
                       title: s.minimizeToTray,
                       subtitle: s.minimizeToTraySub,
                       value: prefs?.minimizeToTray ?? false,

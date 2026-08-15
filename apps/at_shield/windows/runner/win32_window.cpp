@@ -234,6 +234,12 @@ void Win32Window::HideToTray() {
   }
 }
 
+void Win32Window::MinimizeToTaskbar() {
+  if (window_handle_) {
+    ShowWindow(window_handle_, SW_MINIMIZE);
+  }
+}
+
 void Win32Window::RestoreFromTray() {
   EnsureTrayIcon();
   if (!window_handle_) {

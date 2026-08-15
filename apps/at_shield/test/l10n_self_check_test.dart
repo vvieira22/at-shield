@@ -10,6 +10,9 @@ void main() {
     expect(AppStrings.en.startSession, isNot(AppStrings.pt.startSession));
     expect(AppStrings.en.copySuffix, ' (copy)');
     expect(AppStrings.pt.copySuffix, ' (cópia)');
+    expect(AppStrings.pt.closeMinimizes, 'Fechar minimiza a aplicação');
+    expect(AppStrings.en.closeMinimizes, 'Close minimizes the app');
+    expect(AppStrings.en.quitAppConfirm, 'Quit');
   });
 
   test('LocaleController toggles pt/en', () async {
