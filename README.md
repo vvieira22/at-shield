@@ -1,98 +1,242 @@
 <p align="center">
-  <img src="apps/at_shield/assets/icon.png" alt="Logo A.T. Shield" width="120" />
+  <img src="apps/at_shield/assets/icon.png" alt="A.T. Shield Logo" width="120" />
   <br />
   <strong>A.T. Shield</strong>
 </p>
 
-<p align="center">Bloqueador e redirecionador de sites, feito para sessões de foco.</p>
-
-## Como funciona
-
-Você escolhe os sites, cria um perfil e inicia uma sessão. Durante a sessão, o A.T. Shield bloqueia esses endereços e pode redirecionar para páginas personalizadas de conforto, afim de te relembrar do seu foco atual. Ao encerrar a sessão, o acesso volta ao normal.
-
-Há duas opções:
-
-- **Bloquear:** a conexão é interrompida.
-- **Página personalizada:** a conexão é interrompida, porém redicionada o site mostra para página local, como a default do sistema `pages/foco.html`.
-
-### A página de foco
-
-Quando um site é bloqueado, você pode mostrar uma página tranquila para te relembrar do seu foco e sua determinação Abaixo temos o exemplo padrão do sistema, porém você pode configurar e carregar qualquer página html para ser sua página de foco/segurança:
-
 <p align="center">
-  <img src="docs/foco.webp" alt="Página de foco do A.T. Shield" width="560" />
+  System-level website blocker and focus tool built in Rust and Flutter.
 </p>
 
-## Segurança
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-0078D6" alt="Windows Support" />
+  <img src="https://img.shields.io/badge/Linux%20%2F%20macOS-WIP-orange" alt="Linux and macOS WIP" />
+  <img src="https://img.shields.io/badge/telemetry-none%20(offline)-green" alt="No Telemetry" />
+</p>
 
-O A.T. Shield para windows é open source e roda localmente. Com uma sessão ativa, o serviço usa recursos nativos do Windows:
+---
 
-- filtros de saída do **WFP** para bloquear conexões;
-- uma entrada identificada no arquivo `hosts`, quando a página personalizada está ativa;
-- servidores locais em `127.0.0.1` e `127.0.0.2`.
+## Overview
 
-Ele não faz injeção em processos, não lê memória, não captura teclas ou telas, não instala driver de kernel e não envia seus dados para a nuvem.
+A.T. Shield is an open-source tool that blocks distracting websites across your entire system during timed focus sessions. It operates at the OS network level, so blocks apply to all browsers and applications without needing browser extensions.
 
-O Windows pode alertar sobre builds sem assinatura Authenticode, e está explicado em [SECURITY.md](SECURITY.md).
+Two blocking modes are supported per website:
 
-## Como usar
+1. **Hard Block**: Outbound connections to the domain are dropped immediately.
+2. **Custom Page**: The domain is redirected to a local lightweight web server that displays a custom HTML page (such as the default campfire screen) directly in your browser.
 
-**Requisito:** Windows 10/11 x64. O bloqueio de rede roda no serviço Windows (`AtShieldService`) com privilégios elevados; a interface abre como usuário normal.
+<p align="center">
+  <img src="docs/foco.webp" alt="A.T. Shield Focus Screen" width="620" />
+  <br />
+  <em>Default focus screen (<code>pages/foco.html</code>). Any custom HTML file can be configured per rule.</em>
+</p>
 
-### Instalação (recomendado)
+---
 
-1. Baixe o `ATShield-*.msi` da release (ou gere com `scripts\build-installer.ps1`).
-2. Execute o MSI — o UAC pede admin **uma vez** (instalação per-machine).
-3. Abra **A.T. Shield** pelo menu Iniciar.
-4. Crie um perfil, adicione sites, escolha o modo de bloqueio e inicie a sessão.
+## How Blocking Works
 
-Não é necessário instalar Rust, Flutter nem baixar crates no PC do usuário: o MSI já traz a UI, o serviço e as páginas.
+Here is a straightforward explanation of what happens under the hood when a focus session is active.
 
-Crashes/fatais do serviço vão para `C:\Program Files\AT Shield\logs\` (`crash-*.log` / `fatal-*.log`). Em dev (`--console`), o fallback é `%ProgramData%\ATShield\logs`.
+```
+                    [ You open distracting.com ]
+                                 |
+              +------------------+------------------+
+              |                                     |
+    Mode: Hard Block                       Mode: Custom Page
+              |                                     |
+    Firewall drops the                    Redirects to 127.0.0.2
+    connection at the OS                  Local web server returns
+    network layer.                        your custom HTML page.
+              |                                     |
+              +------------------+------------------+
+                                 |
+                     [ Focus session ends ]
+                                 |
+              Rules and certificates are removed.
+              Normal internet access is restored.
+```
 
-Sem o serviço rodando (ou se ele não estiver elevado), a interface abre, mas o bloqueio de rede não é aplicado.
+### 1. Hard Block Mode
+When you try to load a blocked domain (e.g. `x.com`), your browser resolves the domain to an IP address and attempts to establish a TCP connection. A.T. Shield registers a rule with the operating system's native firewall (Windows Filtering Platform) to drop outbound packets to that IP. The connection terminates immediately before leaving your machine.
 
-Antes de abrir jogos com Vanguard, EAC, BattlEye ou Faceit, encerre a sessão e pare o serviço (ou feche o app e use `services.msc`).
+### 2. Custom Focus Page Mode
+If you prefer seeing a focus reminder instead of a dead connection:
 
-### Desinstalação
+1. **Host redirection**: The domain is routed to `127.0.0.2` via the system `hosts` file.
+2. **Local web server**: An embedded Rust web server running on `127.0.0.2:80` and `127.0.0.2:443` catches the request and serves the configured HTML page.
+3. **HTTPS / HSTS handling**: Because modern websites strictly enforce HTTPS via HSTS, the background service generates a local self-signed certificate covering the blocked domains and trusts it in the system certificate store. This lets the browser display the local page cleanly without security warnings.
 
-Remova pelo Painel de Controle / Configurações. O MSI para o serviço, limpa filtros WFP/`hosts`, remove o certificado sinkhole do store Root (se presente) e apaga `%ProgramData%\ATShield`.
+### 3. Session End & Fail-Safes
+When the session timer completes or you manually stop the session:
+- Firewall rules are dropped.
+- The `hosts` file entries are cleared.
+- Temporary certificates are removed from the certificate store.
 
-## Para desenvolver
+If the UI crashes or the process is killed unexpectedly, an internal watchdog in the background service detects the loss of heartbeat and automatically removes all network blocks to prevent lockouts.
 
-```bat 
-:: atalho: scripts\dev-windows.bat (UI + serviço em --console)
-:: ou manualmente:
+---
 
-:: terminal 1
+## Architecture & OS Support
+
+The project is structured with a shared Rust core engine (`crates/at_shield_core`) and platform-specific network adapters.
+
+| Operating System | Status | Implementation Details |
+| :--- | :---: | :--- |
+| **Windows** | **Fully supported (100%)** | Windows Service (`AtShieldService`) + Windows Filtering Platform (WFP) + `hosts` sync + dynamic TLS certificates. |
+| **Linux** | **Planned (WIP)** | `systemd` daemon + `nftables`/`iptables` packet dropping + `/etc/hosts` redirection + system CA trust. |
+| **macOS** | **Planned (WIP)** | `launchd` helper + Packet Filter (`PF` / `pfctl`) or NetworkExtension + `/etc/hosts` + Keychain trust. |
+---
+
+### Windows Implementation
+
+On Windows 10/11 x64, A.T. Shield runs with a split-privilege design:
+
+- **Desktop UI (`at_shield.exe`)**: Built with Flutter. Runs as a standard, unprivileged user.
+- **Background Service (`AtShieldService`)**: Written in Rust. Runs under `LocalSystem` to manage network policies and communicates with the UI via Named Pipes (`\\.\pipe\at-shield`).
+
+```
++-------------------------------------------------------------+
+|                      FLUTTER UI                             |
+|              (Standard unprivileged user)                   |
++-------------------------------------------------------------+
+                              |
+               Named Pipe (\\.\pipe\at-shield)
+                              |
++-------------------------------------------------------------+
+|               AT-SHIELD SERVICE (Rust / LocalSystem)         |
+|                                                             |
+|  +-----------------------+     +--------------------------+ |
+|  |     WFP Controller    |     |    Page Server & TLS     | |
+|  | (ALE_AUTH_CONNECT_V4) |     | (127.0.0.2:80 / 443)     | |
+|  +-----------------------+     +--------------------------+ |
++-------------------------------------------------------------+
+           |                                  |
+   Outbound IPv4 Drop                 hosts file & certutil
+```
+
+Key technical details:
+- **WFP dynamic sessions**: Hard blocks are added at `FWPM_LAYER_ALE_AUTH_CONNECT_V4` using `FWPM_SESSION_FLAG_DYNAMIC`. If the service process terminates, Windows automatically tears down all active dynamic filters.
+- **Dedicated loopback IP (`127.0.0.2`)**: The sinkhole HTTP/HTTPS server binds specifically to `127.0.0.2` rather than `127.0.0.1`. This avoids conflicts with local development web servers running on `localhost`.
+- **Certutil integration**: The sinkhole certificate is dynamically generated with `rcgen` and registered using Windows `certutil`. It is removed on session stop and on MSI uninstallation.
+
+---
+
+### Linux Implementation Plan
+
+*Crate: [`crates/at_shield_linux`](file:///crates/at_shield_linux) (stub)*
+
+- Daemon running under `systemd` (`at-shield.service`) communicating via Unix domain sockets (`/run/at-shield/engine.sock`).
+- Hard blocking via `nftables` or `iptables` drop rules on the output chain.
+- Custom page redirection via `/etc/hosts` and certificate trust managed via `update-ca-certificates`.
+
+---
+
+### macOS Implementation Plan
+
+*Crate: [`crates/at_shield_macos`](file:///crates/at_shield_macos) (stub)*
+
+- Privileged helper daemon managed by `launchd` (`com.nerd.at-shield.helper`).
+- Hard blocking using Packet Filter (`PF` / `pfctl`) anchor rules or Apple's `NetworkExtension` framework (`NEFilterDataProvider`).
+- Custom page redirection via `/etc/hosts` and certificate trust via `/usr/bin/security add-trusted-cert`.
+
+---
+
+## Security & Privacy
+
+- **No telemetry**: 100% offline. No analytics, tracking, or network calls to external servers.
+- **No kernel drivers**: Does not use `.sys` or `.kext` drivers, eliminating the risk of kernel crashes or BSODs.
+- **No process injection**: Does not inspect memory, capture keystrokes, or hook into other running processes.
+- **Clean uninstallation**: The MSI uninstaller stops the service, deletes all WFP rules, restores the `hosts` file, removes the sinkhole root certificate, and cleans up data directories.
+
+> [!NOTE]
+> **Anti-Cheat Notice**: Aggressive anti-cheat systems (such as Vanguard, EasyAntiCheat, BattlEye, or Faceit) monitor network and privilege changes. End any active focus session and stop the service before launching games protected by kernel-level anti-cheat software.
+
+For additional security details, see [SECURITY.md](SECURITY.md).
+
+---
+
+## Installation (Windows)
+
+1. Download the latest `ATShield-*.msi` from [Releases](https://github.com/vitor/at-shield/releases).
+2. Run the MSI installer (requires Administrator approval once for the background service).
+3. Launch **A.T. Shield** from the Start Menu.
+4. Create a profile, add websites, select your blocking mode, and start a session.
+
+---
+
+## Development
+
+### Requirements
+- **Rust** (stable): [rustup.rs](https://rustup.rs)
+- **Flutter SDK** (v3.12+): [flutter.dev](https://flutter.dev)
+- **Visual Studio C++ Build Tools**
+- **WiX Toolset v7** (for building the MSI): `winget install --id WiXToolset.WiXCLI -e`
+
+### Running in Development Mode
+
+To run both the service and the Flutter UI locally:
+
+```bat
+:: Option A: Run automated startup script
+scripts\dev-windows.bat
+
+:: Option B: Start manually in two terminals
+:: Terminal 1: Background service (run terminal as Admin for network filtering)
 cd crates\at_shield_service
 cargo run -- --console
 
-:: terminal 2
+:: Terminal 2: Flutter UI
 cd apps\at_shield
 flutter pub get
 flutter run -d windows
 ```
 
-É necessário ter Flutter, Rust e o Visual Studio Build Tools com C++ instalados.
+> **Page Preview**: While the service is running, preview the custom focus page in your browser at `http://127.0.0.1:47831/`.
 
-O preview das páginas fica em `http://127.0.0.1:47831/`.
+### Emergency Unblock / Reset
+If you interrupt a development session and need to force-clear any remaining rules:
+```bat
+:: Run as Administrator
+scripts\nuke-blocks.bat
+```
+*(Or via Cargo: `cargo run -p at_shield_service -- --nuke`)*
 
-### Gerar o MSI (máquina de build)
+### Building the MSI Installer
 
 ```powershell
-winget install --id WiXToolset.WiXCLI -e
 powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
 ```
 
-O script passa `-acceptEula wix7` (OSMF do WiX v7). Organizações com receita ≥ US$10k/ano devem seguir https://wixtoolset.org/osmf/.
+The output installer will be placed at `dist\ATShield-1.0.0.msi`.
 
-Saída: `dist\ATShield-1.0.0.msi`.
-Assinatura Authenticode opcional:
+---
 
-```powershell
-$env:ATSHIELD_SIGN_THUMBPRINT = '<thumbprint do certificado>'
-powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
+## Project Structure
+
+```
+at-shield/
+├── apps/
+│   └── at_shield/            # Flutter desktop application
+├── packages/
+│   └── at_shield_ui/         # UI theme and widget library
+├── crates/
+│   ├── at_shield_core/       # Core state engine, SQLite store, IPC types
+│   ├── at_shield_service/    # Background daemon and Named Pipes server
+│   ├── at_shield_windows/    # Windows WFP, hosts manager, TLS page server
+│   ├── at_shield_linux/      # Linux adapter (roadmap stub)
+│   ├── at_shield_macos/      # macOS adapter (roadmap stub)
+│   ├── at_shield_android/    # Android FFI / VPN bindings (WIP)
+│   └── at_shield_ffi/        # C / Dart FFI interface
+├── pages/                    # Built-in HTML focus screens and assets
+├── installer/                # WiX v7 installer source files
+├── scripts/                  # Build and development scripts
+└── docs/                     # Documentation media
 ```
 
-Detalhes de privilégios e SmartScreen: [SECURITY.md](SECURITY.md).
+---
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
