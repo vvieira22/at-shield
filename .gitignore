@@ -1,0 +1,17 @@
+/target/
+/target-build/
+/target_new/
+**/*.rs.bk
+.idea/
+.vscode/
+*.iml
+.DS_Store
+apps/at_shield/.dart_tool/
+apps/at_shield/.flutter-plugins-dependencies
+apps/at_shield/build/
+packages/**/.dart_tool/
+packages/**/build/
+*.db
+/installer/staging/
+/installer/generated/
+/dist/

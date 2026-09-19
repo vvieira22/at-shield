@@ -1,0 +1,7 @@
+[package]
+name = "at_shield_android"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+at_shield_core = { workspace = true }
